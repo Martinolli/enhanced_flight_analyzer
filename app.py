@@ -254,7 +254,22 @@ with st.sidebar:
                     file_name=f"flight_dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
                     mime="text/html"
                 )
-            
+
+            if st.button("📥 Download HTML Report data"):
+                # Generate HTML report with charts and data
+                if st.session_state.data is not None:
+                    html_content = export_manager.generate_auto_report(
+                        st.session_state.charts, st.session_state.data
+                    )
+                    st.download_button(
+                        label="Download HTML Report",
+                        data=html_content,
+                        file_name=f"flight_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                        mime="text/html"
+                    )
+                else:
+                    st.warning("No data available to generate the HTML report. Please upload a data file first.")
+
             if st.button("📈 Export All Charts as Images"):
                 # This would be implemented to export individual chart images
                 st.info("Chart image export functionality coming soon!")
