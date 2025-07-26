@@ -8,6 +8,10 @@ import base64
 from typing import Dict, List, Any, Optional
 import io
 
+from components.chart_manager import ChartManager
+from components.flight_param_limits import PARAM_LIMITS
+
+
 class ExportManager:
     """
     Manages export functionality for charts, dashboards, and data.
@@ -72,6 +76,76 @@ class ExportManager:
             st.error(f"Error exporting dashboard: {e}")
             return ""
     
+    def generate_automatic_interpretations(self, df: pd.DataFrame) -> list:
+        interpretations = []
+        for param, limits in PARAM_LIMITS.items():
+            if param in df.columns:
+                min_val = df[param].min()
+                max_val = df[param].max()
+                if min_val < limits["min"]:
+                    interpretations.append(
+                        f"⚠️ {param}: valor mínimo {min_val:.2f} < limite mínimo permitido ({limits['min']})."
+                    )
+                if max_val > limits["max"]:
+                    interpretations.append(
+                        f"⚠️ {param}: valor máximo {max_val:.2f} > limite máximo permitido ({limits['max']})."
+                    )
+                if limits["min"] <= min_val and max_val <= limits["max"]:
+                    interpretations.append(
+                        f"✅ {param}: todos os valores dentro dos limites especificados."
+                    )
+        if not interpretations:
+            interpretations.append("Nenhum parâmetro crítico identificado com valores fora dos limites default.")
+        return interpretations
+
+    def generate_auto_report(self, charts, df, stats=None, info=None, filename="report.html"):
+        if isinstance(charts, str):
+            raise ValueError("Charts is a string, expected a dictionary of chart configs.")
+        if not isinstance(df, pd.DataFrame):
+            raise ValueError("DataFrame is required.")
+
+        html_parts = []
+        # 1. Cabeçalho e informações básicas
+        html_parts.append(f"<h1>Relatório Automático - Ensaio em Voo</h1>")
+        html_parts.append(f"<p><b>Total de pontos:</b> {len(df)}<br>")
+        html_parts.append(f"<b>Número de parâmetros:</b> {len(df.columns)-2}<br>")
+        duration = df['Elapsed Time (s)'].max() / 60 if 'Elapsed Time (s)' in df.columns else 0
+        html_parts.append(f"<b>Duração total:</b> {duration:.1f} minutos</p>")
+        
+        # 2. Resumo estatístico (média, min, max, std)
+        html_parts.append("<h2>Resumo Estatístico</h2>")
+        html_parts.append(df.describe().to_html(classes='stats-table', float_format="%.2f"))
+        
+        # 3. Gráficos principais
+        html_parts.append("<h2>Gráficos</h2>")
+        for config in charts.values():
+            chart_manager = ChartManager()
+            fig = chart_manager.create_chart(df, config)
+            if fig:
+                fig_html = pio.to_html(fig, full_html=False, include_plotlyjs='cdn')
+                html_parts.append(f"<h3>{config['title']}</h3>{fig_html}")
+        
+        # 4. Possíveis alertas automáticos (simples)
+        html_parts.append("<h2>Notas Automáticas</h2>")
+        if (df.isnull().sum().sum()) > 0:
+            html_parts.append("<p style='color:red;'>⚠️ Dados ausentes detectados em alguns parâmetros.</p>")
+        else:
+            html_parts.append("<p>✅ Nenhum dado ausente detectado.</p>")
+
+        # 5. Interpretações automáticas
+        html_parts.append("<h2>Interpretações Automáticas</h2>")
+        for interp in self.generate_automatic_interpretations(df):
+            html_parts.append(f"<p>{interp}</p>")
+
+        # 6. Finalização
+        html_parts.append("<hr><p style='text-align:center;'>Relatório gerado automaticamente pelo Enhanced Flight Data Analyzer Pro</p>")
+
+        # 7. Junta tudo e salva
+        full_html = "<html><head><title>Relatório de Ensaio em Voo</title></head><body>" + "".join(html_parts) + "</body></html>"
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(full_html)
+        return full_html
+
     def _generate_html_template(self) -> str:
         """Generate the HTML template for dashboard export."""
         return """
