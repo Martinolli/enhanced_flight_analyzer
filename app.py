@@ -181,11 +181,20 @@ with st.sidebar:
                         # Chart Type
                         chart_type = st.selectbox(
                             "Chart Type",
-                            options=['line', 'scatter', 'bar', 'area'],
-                            index=['line', 'scatter', 'bar', 'area'].index(config['type']),
+                            options=['line', 'scatter', 'bar', 'area', 'frequency'],
+                            index=['line', 'scatter', 'bar', 'area', 'frequency'].index(config['type']),
                             key=f"type_{chart_id}"
                         )
                         st.session_state.charts[chart_id]['type'] = chart_type
+
+                        if chart_type == 'frequency':
+                            freq_type = st.selectbox(
+                                "Frequency Analysis Type",
+                                options=['fft', 'psd'],
+                                index=0,
+                                key=f"freq_type_{chart_id}"
+                            )
+                            st.session_state.charts[chart_id]['freq_type'] = freq_type
                         
                         # Parameter Selection
                         available_params = [col for col in df.columns 
