@@ -488,3 +488,10 @@ class LayoutManager:
             return list(st.session_state.saved_layouts.keys())
         return []
 
+    def _create_single_layout(self, charts, chart_manager, df):
+        if len(charts) > 0:
+            cfg = charts[0]
+            fig = chart_manager.create_chart(df, cfg)
+            if fig:
+                chart_id = cfg.get("id", "chart0") if isinstance(cfg, dict) else cfg.id
+                st.plotly_chart(fig, use_container_width=True, key=f"single_{chart_id}")

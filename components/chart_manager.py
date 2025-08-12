@@ -1,17 +1,19 @@
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Any, Optional, Tuple
-from scipy.fft import fft
+from typing import Dict, Any, Optional, Union
 from scipy.signal import welch
+from scipy.fft import fft, fftfreq
+
+from .config_models import ChartConfig, migrate_chart_dict
+
 
 class ChartManager:
     """
-    Manages chart creation and configuration for the enhanced flight analyzer.
+    Manages chart creation and configuration including arbitrary X-axis.
     """
-    
+
     def __init__(self):
         self.color_schemes = {
             'viridis': px.colors.sequential.Viridis,
@@ -24,407 +26,141 @@ class ChartManager:
             'greens': px.colors.sequential.Greens,
             'purples': px.colors.sequential.Purples
         }
-    
-    def create_chart(self, df: pd.DataFrame, config: Dict[str, Any]) -> Optional[go.Figure]:
-        """
-        Create a chart based on the provided configuration.
-        
-        Args:
-            df: DataFrame containing the flight data
-            config: Chart configuration dictionary
-            
-        Returns:
-            Plotly figure object or None if creation fails
-        """
-        try:
-            if not config.get('parameters'):
-                return None
-            
-            chart_type = config.get('type', 'line')
-            x_axis = config.get('x_axis', 'Elapsed Time (s)')
-            title = config.get('title', 'Flight Data Chart')
-            y_axis_label = config.get('y_axis_label', 'Value')
-            color_scheme = config.get('color_scheme', 'viridis')
 
-            if chart_type == 'frequency':
-                return self.create_frequency_plot(df, config)
-            
-            # Validate x-axis column exists
-            if x_axis not in df.columns:
+    def _ensure_config(self, config: Union[ChartConfig, Dict[str, Any]]) -> ChartConfig:
+        return config if isinstance(config, ChartConfig) else migrate_chart_dict(config)
+
+    def create_chart(self, df: pd.DataFrame, config: Union[ChartConfig, Dict[str, Any]]) -> Optional[go.Figure]:
+        try:
+            cfg = self._ensure_config(config)
+
+            if cfg.chart_type != "frequency" and not cfg.y_params:
                 return None
-            
-            # Filter valid parameters
-            valid_params = [param for param in config['parameters'] if param in df.columns]
-            if not valid_params:
+
+            if cfg.chart_type == 'frequency':
+                return self._create_frequency_plot(df, cfg)
+
+            if cfg.x_param not in df.columns:
                 return None
-            
-            # Create chart based on type
-            if chart_type == 'line':
-                return self._create_line_chart(df, x_axis, valid_params, title, y_axis_label, color_scheme)
-            elif chart_type == 'scatter':
-                return self._create_scatter_chart(df, x_axis, valid_params, title, y_axis_label, color_scheme)
-            elif chart_type == 'bar':
-                return self._create_bar_chart(df, x_axis, valid_params, title, y_axis_label, color_scheme)
-            elif chart_type == 'area':
-                return self._create_area_chart(df, x_axis, valid_params, title, y_axis_label, color_scheme)
-            else:
-                return self._create_line_chart(df, x_axis, valid_params, title, y_axis_label, color_scheme)
-                
+
+            valid_y = [p for p in cfg.y_params if p in df.columns]
+            if not valid_y:
+                return None
+
+            chosen_type = cfg.chart_type
+
+            # DataFrame we will actually plot
+            df_plot = df
+
+            non_time = cfg.x_param not in ("Elapsed Time (s)", "Timestamp")
+            x_series = df[cfg.x_param]
+
+            if chosen_type == "line" and non_time:
+                if not x_series.is_monotonic_increasing:
+                    if cfg.sort_x:
+                        df_plot = df.sort_values(cfg.x_param)
+                    else:
+                        chosen_type = "scatter"  # fallback
+
+            palette = self.color_schemes.get(cfg.color_scheme, px.colors.sequential.Viridis)
+            fig = go.Figure()
+
+            for idx, param in enumerate(valid_y):
+                color = palette[idx % len(palette)]
+                x_vals = df_plot[cfg.x_param]
+                y_vals = df_plot[param]
+
+                if chosen_type == "line":
+                    fig.add_trace(go.Scatter(
+                        x=x_vals, y=y_vals,
+                        mode="lines",
+                        name=param,
+                        line=dict(color=color)
+                    ))
+                elif chosen_type == "scatter":
+                    fig.add_trace(go.Scatter(
+                        x=x_vals, y=y_vals,
+                        mode="markers",
+                        name=param,
+                        marker=dict(color=color, size=6)
+                    ))
+                elif chosen_type == "bar":
+                    fig.add_trace(go.Bar(
+                        x=x_vals, y=y_vals,
+                        name=param,
+                        marker_color=color
+                    ))
+                elif chosen_type == "area":
+                    fig.add_trace(go.Scatter(
+                        x=x_vals, y=y_vals,
+                        mode="lines",
+                        name=param,
+                        line=dict(color=color),
+                        fill="tozeroy"
+                    ))
+                else:
+                    fig.add_trace(go.Scatter(
+                        x=x_vals, y=y_vals,
+                        mode="lines",
+                        name=param
+                    ))
+
+            fig.update_layout(
+                title=cfg.title,
+                xaxis_title=cfg.x_param,
+                yaxis_title=cfg.y_axis_label,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+
+            return fig
         except Exception as e:
             print(f"Error creating chart: {e}")
             return None
-    
-    def create_frequency_plot(self, df: pd.DataFrame, config: Dict[str, Any]) -> Optional[go.Figure]:
-        """
-        Create a frequency plot based on the provided configuration.
-        
-        Args:
-            df: DataFrame containing the flight data
-            config: Chart configuration dictionary
-            
-        Returns:
-            Plotly figure object or None if creation fails
-        """
+
+    def _create_frequency_plot(self, df: pd.DataFrame, cfg: ChartConfig) -> Optional[go.Figure]:
         try:
-            if not config.get('parameters'):
-                return None
-            
-            title = config.get('title', 'Frequency Analysis')
-            y_axis_label = config.get('y_axis_label', 'Magnitude')
-            color_scheme = config.get('color_scheme', 'viridis')
-            freq_type = config.get('freq_type', 'fft')  # 'fft' or 'psd'
-            
-            # Validate parameters
-            valid_params = [param for param in config['parameters'] if param in df.columns]
-            if not valid_params:
-                return None
-            
-            fig = go.Figure()
-            colors = self._get_colors(color_scheme, len(valid_params))
-            
-            for i, param in enumerate(valid_params):
-                if freq_type == 'fft':
-                    freq, magnitude = self._compute_fft(df[param], df['Elapsed Time (s)'])
-                    y_axis_label = 'Magnitude'
-                else:  # PSD
-                    freq, magnitude = self._compute_psd(df[param], df['Elapsed Time (s)'])
-                    y_axis_label = 'Power/Frequency'
-                
-                fig.add_trace(go.Scatter(
-                    x=freq,
-                    y=magnitude,
-                    mode='lines',
-                    name=param,
-                    line=dict(color=colors[i % len(colors)], width=2),
-                    hovertemplate=f'<b>{param}</b><br>' +
-                                f'Frequency: %{{x:.2f}} Hz<br>' +
-                                f'{y_axis_label}: %{{y:.3e}}<extra></extra>'
-                ))
-            
-            fig.update_layout(
-                title=dict(text=title, x=0.5, font=dict(size=16)),
-                xaxis_title='Frequency (Hz)',
-                yaxis_title=y_axis_label,
-                xaxis_type='log',
-                yaxis_type='log',
-                hovermode='closest',
-                showlegend=True,
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                ),
-                margin=dict(l=50, r=50, t=80, b=50),
-                height=400
+            time_col = "Elapsed Time (s)" if "Elapsed Time (s)" in df.columns else (
+                "Timestamp" if "Timestamp" in df.columns else cfg.x_param
             )
-            
+            if time_col not in df.columns:
+                return None
+            if not cfg.y_params:
+                return None
+
+            t = df[time_col]
+            if t.isna().any() or len(t) < 2:
+                return None
+
+            diffs = np.diff(t.values.astype(float))
+            avg_dt = np.mean(diffs)
+            if avg_dt == 0:
+                return None
+            fs = 1.0 / avg_dt
+
+            fig = go.Figure()
+            for param in [p for p in cfg.y_params if p in df.columns]:
+                y = df[param].values
+                if cfg.freq_type == "psd":
+                    f, Pxx = welch(y, fs=fs, nperseg=min(256, len(y)))
+                    fig.add_trace(go.Scatter(x=f, y=Pxx, mode="lines", name=f"{param} PSD"))
+                else:
+                    N = len(y)
+                    yf = np.abs(fft(y))
+                    xf = fftfreq(N, avg_dt)[:N//2]
+                    fig.add_trace(go.Scatter(
+                        x=xf,
+                        y=2.0 / N * yf[:N//2],
+                        mode="lines",
+                        name=f"{param} FFT"
+                    ))
+
+            fig.update_layout(
+                title=cfg.title or "Frequency Analysis",
+                xaxis_title="Frequency (Hz)",
+                yaxis_title="Magnitude",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
             return fig
-        
         except Exception as e:
-            print(f"Error creating frequency plot: {e}")
+            print(f"Error creating frequency chart: {e}")
             return None
-
-    def _compute_fft(self, data: pd.Series, time: pd.Series) -> Tuple[np.ndarray, np.ndarray]:
-        """Compute the FFT of the input data."""
-        n = len(data)
-        dt = (time.iloc[-1] - time.iloc[0]) / (n - 1)  # Time step
-        
-        fft_values = fft(data.values)
-        frequencies = np.fft.fftfreq(n, dt)[:n//2]
-        magnitudes = 2.0/n * np.abs(fft_values[0:n//2])
-        
-        return frequencies, magnitudes
-
-    def _compute_psd(self, data: pd.Series, time: pd.Series) -> Tuple[np.ndarray, np.ndarray]:
-        """Compute the Power Spectral Density using Welch's method."""
-        dt = (time.iloc[-1] - time.iloc[0]) / (len(time) - 1)  # Time step
-        frequencies, psd = welch(data.values, fs=1/dt)
-        
-        return frequencies, psd
-    
-    def _create_line_chart(self, df: pd.DataFrame, x_axis: str, parameters: List[str], 
-                          title: str, y_axis_label: str, color_scheme: str) -> go.Figure:
-        """Create a line chart."""
-        fig = go.Figure()
-        
-        colors = self._get_colors(color_scheme, len(parameters))
-        
-        for i, param in enumerate(parameters):
-            fig.add_trace(go.Scatter(
-                x=df[x_axis],
-                y=df[param],
-                mode='lines',
-                name=param,
-                line=dict(color=colors[i % len(colors)], width=2),
-                hovertemplate=f'<b>{param}</b><br>' +
-                             f'{x_axis}: %{{x}}<br>' +
-                             f'Value: %{{y:.3f}}<extra></extra>'
-            ))
-        
-        fig.update_layout(
-            title=dict(text=title, x=0.5, font=dict(size=16)),
-            xaxis_title=x_axis,
-            yaxis_title=y_axis_label,
-            hovermode='x unified',
-            showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
-            ),
-            margin=dict(l=50, r=50, t=80, b=50),
-            height=400
-        )
-        
-        return fig
-    
-    def _create_scatter_chart(self, df: pd.DataFrame, x_axis: str, parameters: List[str], 
-                             title: str, y_axis_label: str, color_scheme: str) -> go.Figure:
-        """Create a scatter chart."""
-        fig = go.Figure()
-        
-        colors = self._get_colors(color_scheme, len(parameters))
-        
-        for i, param in enumerate(parameters):
-            fig.add_trace(go.Scatter(
-                x=df[x_axis],
-                y=df[param],
-                mode='markers',
-                name=param,
-                marker=dict(
-                    color=colors[i % len(colors)],
-                    size=4,
-                    opacity=0.7
-                ),
-                hovertemplate=f'<b>{param}</b><br>' +
-                             f'{x_axis}: %{{x}}<br>' +
-                             f'Value: %{{y:.3f}}<extra></extra>'
-            ))
-        
-        fig.update_layout(
-            title=dict(text=title, x=0.5, font=dict(size=16)),
-            xaxis_title=x_axis,
-            yaxis_title=y_axis_label,
-            hovermode='closest',
-            showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
-            ),
-            margin=dict(l=50, r=50, t=80, b=50),
-            height=400
-        )
-        
-        return fig
-    
-    def _create_bar_chart(self, df: pd.DataFrame, x_axis: str, parameters: List[str], 
-                         title: str, y_axis_label: str, color_scheme: str) -> go.Figure:
-        """Create a bar chart (useful for discrete time intervals)."""
-        fig = go.Figure()
-        
-        colors = self._get_colors(color_scheme, len(parameters))
-        
-        # Sample data for bar chart (take every nth point to avoid overcrowding)
-        sample_interval = max(1, len(df) // 50)  # Show max 50 bars
-        sampled_df = df.iloc[::sample_interval]
-        
-        for i, param in enumerate(parameters):
-            fig.add_trace(go.Bar(
-                x=sampled_df[x_axis],
-                y=sampled_df[param],
-                name=param,
-                marker_color=colors[i % len(colors)],
-                opacity=0.8,
-                hovertemplate=f'<b>{param}</b><br>' +
-                             f'{x_axis}: %{{x}}<br>' +
-                             f'Value: %{{y:.3f}}<extra></extra>'
-            ))
-        
-        fig.update_layout(
-            title=dict(text=title, x=0.5, font=dict(size=16)),
-            xaxis_title=x_axis,
-            yaxis_title=y_axis_label,
-            hovermode='x unified',
-            showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
-            ),
-            margin=dict(l=50, r=50, t=80, b=50),
-            height=400,
-            barmode='group'
-        )
-        
-        return fig
-    
-    def _create_area_chart(self, df: pd.DataFrame, x_axis: str, parameters: List[str], 
-                          title: str, y_axis_label: str, color_scheme: str) -> go.Figure:
-        """Create an area chart."""
-        fig = go.Figure()
-        
-        colors = self._get_colors(color_scheme, len(parameters))
-        
-        for i, param in enumerate(parameters):
-            fig.add_trace(go.Scatter(
-                x=df[x_axis],
-                y=df[param],
-                mode='lines',
-                name=param,
-                fill='tonexty' if i > 0 else 'tozeroy',
-                line=dict(color=colors[i % len(colors)], width=1),
-                fillcolor=colors[i % len(colors)].replace('rgb', 'rgba').replace(')', ',0.3)'),
-                hovertemplate=f'<b>{param}</b><br>' +
-                             f'{x_axis}: %{{x}}<br>' +
-                             f'Value: %{{y:.3f}}<extra></extra>'
-            ))
-        
-        fig.update_layout(
-            title=dict(text=title, x=0.5, font=dict(size=16)),
-            xaxis_title=x_axis,
-            yaxis_title=y_axis_label,
-            hovermode='x unified',
-            showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
-            ),
-            margin=dict(l=50, r=50, t=80, b=50),
-            height=400
-        )
-        
-        return fig
-    
-    def _get_colors(self, color_scheme: str, num_colors: int) -> List[str]:
-        """Get a list of colors from the specified color scheme."""
-        if color_scheme in self.color_schemes:
-            colors = self.color_schemes[color_scheme]
-            if len(colors) >= num_colors:
-                return colors[:num_colors]
-            else:
-                # Repeat colors if we need more than available
-                return (colors * ((num_colors // len(colors)) + 1))[:num_colors]
-        else:
-            # Default to a basic color palette
-            default_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
-                            '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
-            return (default_colors * ((num_colors // len(default_colors)) + 1))[:num_colors]
-    
-    def create_multi_axis_chart(self, df: pd.DataFrame, primary_params: List[str], 
-                               secondary_params: List[str], title: str = "Multi-Axis Chart") -> go.Figure:
-        """
-        Create a chart with multiple y-axes for parameters with different scales.
-        """
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
-        
-        primary_colors = self._get_colors('blues', len(primary_params))
-        secondary_colors = self._get_colors('reds', len(secondary_params))
-        
-        # Add primary parameters
-        for i, param in enumerate(primary_params):
-            if param in df.columns:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df['Elapsed Time (s)'],
-                        y=df[param],
-                        name=param,
-                        line=dict(color=primary_colors[i], width=2)
-                    ),
-                    secondary_y=False,
-                )
-        
-        # Add secondary parameters
-        for i, param in enumerate(secondary_params):
-            if param in df.columns:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df['Elapsed Time (s)'],
-                        y=df[param],
-                        name=param,
-                        line=dict(color=secondary_colors[i], width=2, dash='dash')
-                    ),
-                    secondary_y=True,
-                )
-        
-        # Set axis titles
-        fig.update_xaxes(title_text="Elapsed Time (s)")
-        fig.update_yaxes(title_text="Primary Parameters", secondary_y=False)
-        fig.update_yaxes(title_text="Secondary Parameters", secondary_y=True)
-        
-        fig.update_layout(
-            title=dict(text=title, x=0.5, font=dict(size=16)),
-            hovermode="x unified",
-            height=500,
-            margin=dict(l=50, r=50, t=80, b=50)
-        )
-        
-        return fig
-    
-    def create_correlation_heatmap(self, df: pd.DataFrame, parameters: List[str], 
-                                  title: str = "Parameter Correlation") -> go.Figure:
-        """
-        Create a correlation heatmap for selected parameters.
-        """
-        # Filter numeric columns and selected parameters
-        valid_params = [param for param in parameters if param in df.columns and pd.api.types.is_numeric_dtype(df[param])]
-        
-        if len(valid_params) < 2:
-            return None
-        
-        # Calculate correlation matrix
-        corr_matrix = df[valid_params].corr()
-        
-        fig = go.Figure(data=go.Heatmap(
-            z=corr_matrix.values,
-            x=corr_matrix.columns,
-            y=corr_matrix.columns,
-            colorscale='RdBu_r',
-            zmid=0,
-            text=np.round(corr_matrix.values, 2),
-            texttemplate="%{text}",
-            textfont={"size": 10},
-            hovertemplate='<b>%{x}</b> vs <b>%{y}</b><br>Correlation: %{z:.3f}<extra></extra>'
-        ))
-        
-        fig.update_layout(
-            title=dict(text=title, x=0.5, font=dict(size=16)),
-            xaxis_title="Parameters",
-            yaxis_title="Parameters",
-            height=500,
-            margin=dict(l=50, r=50, t=80, b=50)
-        )
-        
-        return fig
-
