@@ -263,3 +263,14 @@ Current HTML export relies on a simple flex container for grid distribution; cha
 
 If you have suggestions or need a feature prioritized, open an issue or start a discussion.  
 Happy analyzing! ✨
+
+## License
+
+This project is licensed under the Apache License 2.0 – see the [LICENSE.md](LICENSE.md) file for details.
+
+If you redistribute a modified version, keep:
+
+- LICENSE (unchanged text)
+- NOTICE (if present), adding a note of your modifications
+
+External dependencies retain their respective licenses.

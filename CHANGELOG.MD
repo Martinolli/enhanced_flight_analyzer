@@ -25,6 +25,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/) and Seman
 - Correlation matrix caching for performance
 - Quick-start templates now use new `ChartConfig` schema
 - Extensive README refresh
+- License: Apache-2.0 (adds explicit patent grant).
 
 ### Changed
 
