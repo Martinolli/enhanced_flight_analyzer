@@ -257,7 +257,8 @@ if st.session_state.data is not None:
                     y_axis_label=label,
                     color_scheme=scheme
                 ).as_dict()
-                st.experimental_rerun()
+                # Streamlit >=1.30+: experimental_rerun removed; use st.rerun()
+                st.rerun()
 
         with col_q1:
             if st.button("🎯 Control Surfaces Analysis", use_container_width=True):

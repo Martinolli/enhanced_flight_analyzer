@@ -160,22 +160,32 @@ class DataProcessor:
         """
         Convert numeric columns and handle conversion errors.
         """
+        # Collect converted columns to assign in a single operation (avoids fragmentation)
+        converted_numeric: Dict[str, pd.Series] = {}
+        warnings: List[str] = []
         for col in df.columns:
-            if col != 'Timestamp':
-                # Attempt numeric conversion
-                numeric_series = pd.to_numeric(df[col], errors='coerce')
-                
-                # Check conversion success rate
-                valid_ratio = numeric_series.notna().sum() / len(df)
-                
-                if valid_ratio > 0.8:  # At least 80% valid numeric values
-                    df[col] = numeric_series
-                    if valid_ratio < 1.0:
-                        invalid_count = numeric_series.isna().sum()
-                        st.warning(f"Column '{col}': {invalid_count} non-numeric values converted to NaN")
-                else:
-                    st.warning(f"Column '{col}': Too many non-numeric values, keeping as text")
-        
+            if col == 'Timestamp':
+                continue
+            numeric_series = pd.to_numeric(df[col], errors='coerce')
+            valid_ratio = numeric_series.notna().sum() / len(df)
+            if valid_ratio > 0.8:  # convert if sufficiently numeric
+                converted_numeric[col] = numeric_series
+                if valid_ratio < 1.0:
+                    invalid_count = numeric_series.isna().sum()
+                    warnings.append(f"Column '{col}': {invalid_count} non-numeric values converted to NaN")
+            else:
+                warnings.append(f"Column '{col}': Too many non-numeric values, keeping as text")
+
+        # Batch assign converted columns to reduce block fragmentation
+        if converted_numeric:
+            for col, series in converted_numeric.items():
+                df[col] = series
+
+        for msg in warnings:
+            st.warning(msg)
+
+        # Defragment the frame after many potential block replacements
+        df = df.copy()
         return df
     
     def _calculate_derived_columns(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -185,7 +195,11 @@ class DataProcessor:
         if 'Timestamp' in df.columns and df['Timestamp'].notna().any():
             # Calculate elapsed time
             start_time = df['Timestamp'].min()
-            df['Elapsed Time (s)'] = (df['Timestamp'] - start_time).dt.total_seconds()
+            # Assign via .assign to add column without repeated internal inserts
+            elapsed = (df['Timestamp'] - start_time).dt.total_seconds()
+            df = df.assign(**{'Elapsed Time (s)': elapsed})
+            # Optional final copy to keep DataFrame compact (helps after many column edits)
+            df = df.copy()
             
             # Calculate sampling rate
             if len(df) > 1:
