@@ -22,6 +22,7 @@ from components.data_processor import DataProcessor
 from components.layout_manager import LayoutManager
 from components.export_manager import ExportManager
 from components.config_models import migrate_chart_dict, ChartConfig
+from components.export_html_zip import export_charts_as_html_zip
 
 st.set_page_config(
     page_title="Enhanced Flight Data Analyzer Pro",
@@ -211,6 +212,10 @@ with st.sidebar:
                 st.download_button("Download PNG Zip", data=blob, file_name="charts_png.zip")
             except Exception as e:
                 st.error(f"Image export failed (install 'kaleido'): {e}")
+
+        if st.button("Export Charts as HTML Zip"):
+            blob = export_charts_as_html_zip(st.session_state.charts, df, export_manager.chart_manager)
+            st.download_button("Download HTML Zip", data=blob, file_name="charts_html.zip")
     else:
         st.info("📁 Upload a flight data file to begin.")
 
