@@ -13,16 +13,17 @@
 
 import streamlit as st
 import pandas as pd
+
 import numpy as np
 from datetime import datetime
 import uuid
-
 from components.chart_manager import ChartManager
 from components.data_processor import DataProcessor
 from components.layout_manager import LayoutManager
-from components.export_manager import ExportManager
 from components.config_models import migrate_chart_dict, ChartConfig
 from components.export_html_zip import export_charts_as_html_zip
+from components.plotly_ui import download_config, sanitize_filename
+from components.export_manager import ExportManager
 
 st.set_page_config(
     page_title="Enhanced Flight Data Analyzer Pro",
@@ -63,9 +64,11 @@ if 'data' not in st.session_state:
 if 'schema_version' not in st.session_state:
     st.session_state.schema_version = 2  # bumped for sort_x field
 
+
 chart_manager = ChartManager()
 data_processor = DataProcessor()
 layout_manager = LayoutManager()
+
 export_manager = ExportManager()
 
 def migrate_all_charts():
@@ -79,6 +82,35 @@ migrate_all_charts()
 @st.cache_data(show_spinner=False)
 def compute_corr(df_num: pd.DataFrame):
     return df_num.corr()
+
+def show_chart(fig, title_base: str | None = None, key: str | None = None, height: int | None = None):
+    if fig is None:
+        st.info("No figure to display.")
+        return
+
+    # Derive a safe title/filename
+    title = title_base
+    if not title:
+        try:
+            title = getattr(fig.layout.title, "text", None) or "chart"
+        except Exception:
+            title = "chart"
+    safe_title = sanitize_filename(str(title)) or "chart"
+
+    # Optional height override
+    if height:
+        try:
+            fig.update_layout(height=height)
+        except Exception:
+            pass
+
+    # Build config for downloads; fall back to minimal config if needed
+    try:
+        cfg = download_config(safe_title)
+    except Exception:
+        cfg = {"responsive": True, "displaylogo": False}
+
+    st.plotly_chart(fig, use_container_width=True, config=cfg, key=key)
 
 st.markdown("""
 <div class="main-header">
@@ -207,14 +239,10 @@ with st.sidebar:
                 )
 
         # if st.button("Export Charts as PNG Zip"):
-        #    try:
-        #       blob = export_manager.export_charts_as_images_zip(st.session_state.charts, df, fmt="png")
-        #       st.download_button("Download PNG Zip", data=blob, file_name="charts_png.zip")
-        #    except Exception as e:
-        #       st.error(f"Image export failed (install 'kaleido'): {e}")
+
 
         if st.button("Export Charts as HTML Zip"):
-            blob = export_charts_as_html_zip(st.session_state.charts, df, export_manager.chart_manager)
+            blob = export_charts_as_html_zip(st.session_state.charts, df, chart_manager)
             st.download_button("Download HTML Zip", data=blob, file_name="charts_html.zip")
     else:
         st.info("📁 Upload a flight data file to begin.")
