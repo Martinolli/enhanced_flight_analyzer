@@ -52,8 +52,22 @@ class ChartManager:
             # DataFrame we will actually plot
             df_plot = df
 
+            # Handle Timestamp axis formatting: try converting to datetime; else force numeric tickformat
+            x_is_datetime = False
+            if cfg.x_param == "Timestamp":
+                try:
+                    # Attempt datetime coercion (infer_datetime_format deprecated; default behavior is sufficient)
+                    x_dt = pd.to_datetime(df_plot[cfg.x_param], errors="coerce")
+                    # Accept if majority parsed
+                    if x_dt.notna().sum() >= max(3, int(0.8 * len(x_dt))):
+                        df_plot = df_plot.copy()
+                        df_plot[cfg.x_param] = x_dt
+                        x_is_datetime = True
+                except Exception:
+                    x_is_datetime = False
+
             non_time = cfg.x_param not in ("Elapsed Time (s)", "Timestamp")
-            x_series = df[cfg.x_param]
+            x_series = df_plot[cfg.x_param]
 
             if chosen_type == "line" and non_time:
                 if not x_series.is_monotonic_increasing:
@@ -112,6 +126,15 @@ class ChartManager:
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
 
+            # Enforce readable axis formatting for Timestamp
+            if cfg.x_param == "Timestamp":
+                if x_is_datetime:
+                    # Use date axis and a readable tick format (time-of-day with ms)
+                    fig.update_xaxes(type="date", tickformat="%H:%M:%S.%L")
+                else:
+                    # Not parseable as datetime: force decimal, not engineering
+                    fig.update_xaxes(tickformat=",.3f", tickmode="auto")
+
             return fig
         except Exception as e:
             print(f"Error creating chart: {e}")
@@ -145,6 +168,7 @@ class ChartManager:
                     fig.add_trace(go.Scatter(x=f, y=Pxx, mode="lines", name=f"{param} PSD"))
                 else:
                     N = len(y)
+                    from scipy.fft import fft, fftfreq  # local import in case scipy not fully present earlier
                     yf = np.abs(fft(y))
                     xf = fftfreq(N, avg_dt)[:N//2]
                     fig.add_trace(go.Scatter(
