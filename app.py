@@ -206,12 +206,12 @@ with st.sidebar:
                     mime="text/html"
                 )
 
-        if st.button("Export Charts as PNG Zip"):
-            try:
-                blob = export_manager.export_charts_as_images_zip(st.session_state.charts, df, fmt="png")
-                st.download_button("Download PNG Zip", data=blob, file_name="charts_png.zip")
-            except Exception as e:
-                st.error(f"Image export failed (install 'kaleido'): {e}")
+        # if st.button("Export Charts as PNG Zip"):
+        #    try:
+        #       blob = export_manager.export_charts_as_images_zip(st.session_state.charts, df, fmt="png")
+        #       st.download_button("Download PNG Zip", data=blob, file_name="charts_png.zip")
+        #    except Exception as e:
+        #       st.error(f"Image export failed (install 'kaleido'): {e}")
 
         if st.button("Export Charts as HTML Zip"):
             blob = export_charts_as_html_zip(st.session_state.charts, df, export_manager.chart_manager)
