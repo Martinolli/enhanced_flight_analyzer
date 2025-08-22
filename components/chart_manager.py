@@ -123,7 +123,11 @@ class ChartManager:
                 title=cfg.title,
                 xaxis_title=cfg.x_param,
                 yaxis_title=cfg.y_axis_label,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                # Export-friendly defaults
+                font=dict(family="Arial, sans-serif", size=12, color="black"),
+                plot_bgcolor="white",
+                paper_bgcolor="white"
             )
 
             # Enforce readable axis formatting for Timestamp
@@ -182,7 +186,11 @@ class ChartManager:
                 title=cfg.title or "Frequency Analysis",
                 xaxis_title="Frequency (Hz)",
                 yaxis_title="Magnitude",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                # Export-friendly defaults
+                font=dict(family="Arial, sans-serif", size=12, color="black"),
+                plot_bgcolor="white",
+                paper_bgcolor="white"
             )
             return fig
         except Exception as e:
