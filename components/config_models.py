@@ -6,60 +6,6 @@ from typing import List, Optional, Dict, Any
 class ChartConfig:
     """
     Canonical chart configuration model for enhanced plotting functionality.
-    
-    This abstraction enables flexible chart creation with support for:
-    - Multiple chart types (line, scatter, bar, area, frequency)
-    - Dual-axis plotting with primary and secondary Y parameters
-    - Customizable styling via color schemes
-    - Extensible configuration for future chart enhancements
-    
-    Attributes:
-        id (str): Unique identifier for the chart configuration
-        title (str): Display title for the chart
-        chart_type (str): Type of chart to create. Options:
-            - 'line': Line plot for continuous data
-            - 'scatter': Scatter plot for point data  
-            - 'bar': Bar chart for categorical/discrete data
-            - 'area': Area chart with fill
-            - 'frequency': Frequency domain analysis (FFT/PSD)
-        x_param (str): Column name for X-axis data
-        y_params (List[str]): Column names for primary Y-axis parameters
-        secondary_y_params (List[str]): Column names for secondary Y-axis parameters
-            (enables dual-axis charts when specified)
-        y_axis_label (str): Label for primary Y-axis
-        secondary_y_axis_label (str): Label for secondary Y-axis
-        color_scheme (str): Color scheme for plot traces. Options:
-            'viridis', 'plasma', 'inferno', 'magma', 'cividis', 
-            'blues', 'reds', 'greens', 'purples'
-        freq_type (str): Frequency analysis type ('fft' or 'psd')
-        transformations (List[str]): Data transformations to apply
-        notes (Optional[str]): Additional notes about the chart
-        sort_x (bool): Whether to sort data by X parameter for line plots
-    
-    Example:
-        # Single-axis chart
-        config = ChartConfig(
-            id="altitude_speed",
-            title="Altitude and Speed vs Time",
-            chart_type="line",
-            x_param="Elapsed Time (s)",
-            y_params=["Altitude (ft)", "Airspeed (kts)"],
-            y_axis_label="Altitude & Speed",
-            color_scheme="viridis"
-        )
-        
-        # Dual-axis chart
-        config = ChartConfig(
-            id="altitude_temp",
-            title="Altitude vs Temperature",
-            chart_type="line",
-            x_param="Elapsed Time (s)",
-            y_params=["Altitude (ft)"],
-            secondary_y_params=["Temperature (C)"],
-            y_axis_label="Altitude (ft)",
-            secondary_y_axis_label="Temperature (C)",
-            color_scheme="plasma"
-        )
     """
     id: str
     title: str = "Chart"
@@ -73,16 +19,24 @@ class ChartConfig:
     freq_type: str = "fft"              # fft | psd
     transformations: List[str] = field(default_factory=list)
     notes: Optional[str] = None
-    sort_x: bool = False                # New: if True and non-time X, sort to keep line plot
-    
-    # Unit annotation and scale synchronization options
-    auto_detect_units: bool = True      # Automatically detect units from parameter names
-    force_unit_detection: bool = False  # Force dual-axis even if units appear compatible
-    manual_y_unit: Optional[str] = None # Manual override for primary y-axis unit
-    manual_secondary_y_unit: Optional[str] = None # Manual override for secondary y-axis unit
-    synchronize_scales: bool = False    # Synchronize y-axis scales when units are compatible
-    show_units_in_legend: bool = True   # Show units in legend entries
-    unit_annotation_style: str = "parentheses" # "parentheses", "bracket", "suffix"
+    sort_x: bool = False
+
+    # Unit detection / dual axis
+    auto_detect_units: bool = True
+    force_unit_detection: bool = False
+    manual_y_unit: Optional[str] = None
+    manual_secondary_y_unit: Optional[str] = None
+    synchronize_scales: bool = False
+    show_units_in_legend: bool = True
+    unit_annotation_style: str = "parentheses"  # parentheses | bracket | suffix
+
+    # Frequency analysis enhancements
+    freq_detrend: bool = True           # Remove mean / trend before FFT/PSD
+    freq_window: str = "hann"           # hann | hamming | blackman | rect
+    freq_log_scale: bool = False        # Log scale for Y (magnitude / PSD)
+    freq_peak_annotation: bool = True   # Annotate dominant peak
+    freq_min_points: int = 8            # Minimum points required
+    freq_irregular_tol: float = 0.05    # Relative std dev tolerance for sampling irregularity warning
 
     def to_legacy_dict(self) -> Dict[str, Any]:
         return {
@@ -108,7 +62,13 @@ class ChartConfig:
             "manual_secondary_y_unit": self.manual_secondary_y_unit,
             "synchronize_scales": self.synchronize_scales,
             "show_units_in_legend": self.show_units_in_legend,
-            "unit_annotation_style": self.unit_annotation_style
+            "unit_annotation_style": self.unit_annotation_style,
+            "freq_detrend": self.freq_detrend,
+            "freq_window": self.freq_window,
+            "freq_log_scale": self.freq_log_scale,
+            "freq_peak_annotation": self.freq_peak_annotation,
+            "freq_min_points": self.freq_min_points,
+            "freq_irregular_tol": self.freq_irregular_tol
         }
 
     def as_dict(self) -> Dict[str, Any]:
@@ -121,48 +81,7 @@ class ChartConfig:
         return base
 
 
-"""
-ChartConfig Migration and Configuration Functions
-
-This module provides utilities for working with the ChartConfig abstraction,
-including migration from legacy dictionary-based configurations.
-
-The ChartConfig abstraction supports:
-- Single and dual-axis charts
-- Multiple chart types (line, scatter, bar, area, frequency)
-- Flexible color schemes and styling
-- Backward compatibility with dictionary configurations
-"""
-
 def migrate_chart_dict(old: Dict[str, Any]) -> ChartConfig:
-    """
-    Migrate legacy dictionary-based chart configuration to ChartConfig object.
-    
-    This function ensures backward compatibility by converting old-style
-    dictionary configurations to the new ChartConfig abstraction.
-    
-    Args:
-        old: Dictionary containing chart configuration or existing ChartConfig
-        
-    Returns:
-        ChartConfig object with migrated configuration
-        
-    Example:
-        # Legacy dictionary config
-        old_config = {
-            "id": "altitude_chart",
-            "title": "Altitude vs Time",
-            "type": "line",
-            "x_axis": "Elapsed Time (s)", 
-            "parameters": ["Altitude (ft)"],
-            "secondary_y_params": ["Temperature (C)"],
-            "y_axis_label": "Altitude",
-            "secondary_y_axis_label": "Temperature"
-        }
-        
-        # Convert to ChartConfig
-        config = migrate_chart_dict(old_config)
-    """
     if isinstance(old, ChartConfig):
         return old
     return ChartConfig(
@@ -185,5 +104,11 @@ def migrate_chart_dict(old: Dict[str, Any]) -> ChartConfig:
         manual_secondary_y_unit=old.get("manual_secondary_y_unit"),
         synchronize_scales=old.get("synchronize_scales", False),
         show_units_in_legend=old.get("show_units_in_legend", True),
-        unit_annotation_style=old.get("unit_annotation_style", "parentheses")
+        unit_annotation_style=old.get("unit_annotation_style", "parentheses"),
+        freq_detrend=old.get("freq_detrend", True),
+        freq_window=old.get("freq_window", "hann"),
+        freq_log_scale=old.get("freq_log_scale", False),
+        freq_peak_annotation=old.get("freq_peak_annotation", True),
+        freq_min_points=old.get("freq_min_points", 8),
+        freq_irregular_tol=old.get("freq_irregular_tol", 0.05)
     )
