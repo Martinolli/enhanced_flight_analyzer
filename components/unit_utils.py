@@ -1,237 +1,242 @@
 """
 Unit detection and handling utilities for flight data parameters.
 """
+
 import re
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Set, Any
+from collections import defaultdict
+
+
+# ----------------------------
+# Normalization Maps
+# ----------------------------
+
+UNIT_SYNONYMS = {
+    # Temperature
+    "degc": "C",
+    "dgc": "C",
+    "celsius": "C",
+    "c": "C",
+    "degf": "F",
+    "fahrenheit": "F",
+    # Angle
+    "deg": "deg",
+    "degree": "deg",
+    "degrees": "deg",
+    "rad": "rad",
+    "radian": "rad",
+    "radians": "rad",
+    # Speed / velocity
+    "kts": "kt",
+    "kt": "kt",
+    "knots": "kt",
+    "knot": "kt",
+    "mph": "mph",
+    "km/h": "km/h",
+    "mps": "m/s",
+    # Pressure
+    "psi": "psi",
+    "psig": "psi",  # treat gauge same for grouping
+    "psid": "psi",  # differential — decide if you want separate
+    "mbar": "mbar",
+    "hpa": "hPa",
+    "inhg": "inHg",
+    # Length / altitude
+    "ft": "ft",
+    "feet": "ft",
+    # Rates
+    "ft/min": "ft/min",
+    "kt/s": "kt/s",
+    # Acceleration
+    "g": "g",
+    "m/s2": "m/s²",
+    "m/s²": "m/s²",
+    "ft/s2": "ft/s²",
+    "ft/s²": "ft/s²",
+    "deg/s": "deg/s",
+    # Frequency / rotation
+    "hz": "Hz",
+    "rpm": "RPM",
+    # Electrical
+    "vdc": "V",
+    "v": "V",
+    "volt": "V",
+    "volts": "V",
+    "a": "A",
+    "amp": "A",
+    "amps": "A",
+    "ma": "mA",
+    "mv": "mV",
+    # Energy / capacity
+    "ah": "Ah",
+    # Mass / force / weight
+    "kg": "kg",
+    "kgf": "kgf",
+    # Percentage
+    "%": "%",
+    "percent": "%",
+    # Dimensionless placeholders
+    "adm": "ADM"
+}
+
+# Categories map normalized units to a conceptual category
+UNIT_CATEGORIES = {
+    # Temperature
+    "C": "temperature", "F": "temperature", "K": "temperature",
+    # Angle & angular rate
+    "deg": "angle", "rad": "angle", "deg/s": "angular_rate",
+    # Kinematic
+    "m/s": "velocity", "ft/s": "velocity", "kt": "velocity",
+    "km/h": "velocity", "mph": "velocity", "mach": "velocity",
+    "ft/min": "vertical_rate", "kt/s": "accel_derived",
+    # Acceleration
+    "g": "acceleration", "m/s²": "acceleration", "ft/s²": "acceleration",
+    # Pressure
+    "psi": "pressure", "mbar": "pressure", "hPa": "pressure",
+    "inHg": "pressure", "bar": "pressure", "atm": "pressure",
+    # Frequency / rotation
+    "Hz": "frequency", "kHz": "frequency", "MHz": "frequency", "RPM": "frequency",
+    # Electrical
+    "V": "electrical", "mV": "electrical", "A": "electrical", "mA": "electrical",
+    # Capacity / energy related
+    "Ah": "capacity",
+    # Mass / forces (rough grouping)
+    "kg": "mass", "kgf": "force", "N": "force", "lbf": "force",
+    # Percentage / ratio
+    "%": "percentage",
+    # Dimensionless / flags
+    "ADM": "dimensionless", "": "dimensionless"
+}
+
+# Pattern for extracting a trailing parenthetical unit
+PAREN_UNIT_RE = re.compile(r"\(([^)]+)\)\s*$")
+# Fallback simple trailing token pattern
+TRAILING_TOKEN_RE = re.compile(r'[\s\-]([A-Za-z%/°²³0-9]+)$')
 
 
 class UnitDetector:
     """
-    Utility class for detecting and parsing units from parameter names.
+    Detects, normalizes, categorizes units, and groups parameters by unit compatibility.
     """
-    
-    def __init__(self):
-        # Common unit patterns for flight data
-        self.unit_patterns = {
-            # Time units
-            'time': {'s', 'sec', 'second', 'seconds', 'ms', 'millisecond', 'milliseconds', 'min', 'minute', 'minutes', 'h', 'hr', 'hour', 'hours'},
-            
-            # Angular units
-            'angle': {'deg', 'degree', 'degrees', 'rad', 'radian', 'radians', 'arc-deg', 'arc-min', 'arc-sec'},
-            
-            # Force/Load units
-            'force': {'N', 'newton', 'newtons', 'lbf', 'lb', 'pound', 'pounds', 'kgf', 'kg-force'},
-            
-            # Acceleration units
-            'acceleration': {'g', 'g-force', 'm/s2', 'm/s²', 'ft/s2', 'ft/s²'},
-            
-            # Pressure units
-            'pressure': {'Pa', 'pascal', 'kPa', 'MPa', 'psi', 'psig', 'bar', 'atm', 'torr', 'mmHg'},
-            
-            # Temperature units
-            'temperature': {'C', 'DGC', 'degC', 'celsius', 'F', 'degF', 'fahrenheit', 'K', 'kelvin'},
-            
-            # Speed/Velocity units
-            'velocity': {'m/s', 'ft/s', 'kts', 'knots', 'mph', 'km/h', 'mach'},
-            
-            # Percentage/Ratio units
-            'percentage': {'%', 'percent', 'ratio', 'fraction'},
-            
-            # Voltage/Current units
-            'electrical': {'V', 'volt', 'volts', 'A', 'amp', 'amps', 'mA', 'mV'},
-            
-            # Frequency units
-            'frequency': {'Hz', 'hertz', 'kHz', 'MHz', 'rpm', 'rev/min'},
-            
-            # Dimensionless
-            'dimensionless': {'', 'ADM', 'count', 'index', 'flag', 'status'}
-        }
-        
-        # Create reverse lookup for unit category
-        self.unit_to_category = {}
-        for category, units in self.unit_patterns.items():
-            for unit in units:
-                self.unit_to_category[unit.lower()] = category
-    
+
     def extract_unit_from_parameter(self, param_name: str) -> Optional[str]:
-        """
-        Extract unit from parameter name like 'Parameter (unit)'.
-        
-        Args:
-            param_name: Parameter name potentially containing units
-            
-        Returns:
-            Extracted unit string or None if no unit found
-        """
-        # Look for units in parentheses
-        match = re.search(r'\(([^)]*)\)$', param_name.strip())
-        if match:
-            unit = match.group(1).strip()
-            return unit if unit else None
-        
-        # Look for units after a dash or space at the end
-        match = re.search(r'[\s\-]([A-Za-z%/²]+)$', param_name.strip())
-        if match:
-            potential_unit = match.group(1).strip()
-            # Only return if it looks like a valid unit (avoid false positives)
-            if len(potential_unit) <= 6 and not potential_unit.isdigit():
-                return potential_unit
-        
+        """Extract raw unit (without normalization) from a parameter label."""
+        name = param_name.strip()
+        m = PAREN_UNIT_RE.search(name)
+        if m:
+            raw = m.group(1).strip()
+            return raw or None
+
+        # Fallback: last token heuristic
+        m2 = TRAILING_TOKEN_RE.search(name)
+        if m2:
+            tok = m2.group(1).strip()
+            # Heuristic: skip if token contains spaces (already filtered), or is too long
+            if 0 < len(tok) <= 8 and not tok.isdigit():
+                return tok
         return None
-    
-    def get_unit_category(self, unit: str) -> Optional[str]:
-        """
-        Get the category of a unit (e.g., 'time', 'angle', 'force').
-        
-        Args:
-            unit: Unit string
-            
-        Returns:
-            Unit category or None if not recognized
-        """
-        if not unit:
-            return 'dimensionless'
-        
-        unit_lower = unit.lower()
-        return self.unit_to_category.get(unit_lower)
-    
-    def are_units_compatible(self, unit1: str, unit2: str) -> bool:
-        """
-        Check if two units are compatible (same category).
-        
-        Args:
-            unit1: First unit
-            unit2: Second unit
-            
-        Returns:
-            True if units are compatible, False otherwise
-        """
+
+    def normalize_unit(self, unit: Optional[str]) -> Optional[str]:
+        if unit is None:
+            return None
+        u = unit.strip()
+        # unify unicode degree sign
+        u = u.replace("°", "deg")
+        key = u.lower()
+        return UNIT_SYNONYMS.get(key, u)
+
+    def get_unit_category(self, unit: Optional[str]) -> Optional[str]:
+        if unit is None:
+            return "dimensionless"
+        normalized = self.normalize_unit(unit) or ""
+        return UNIT_CATEGORIES.get(normalized, None)
+
+    def are_units_compatible(self, unit1: Optional[str], unit2: Optional[str]) -> bool:
         cat1 = self.get_unit_category(unit1)
         cat2 = self.get_unit_category(unit2)
-        
-        # Both unknown units are considered incompatible
-        if cat1 is None and cat2 is None:
-            return unit1 == unit2  # Only compatible if identical
-        
+        if cat1 is None or cat2 is None:
+            # Unknown categories: only treat compatible if identical normalized forms
+            return (self.normalize_unit(unit1) == self.normalize_unit(unit2))
         return cat1 == cat2
-    
-    def analyze_parameter_units(self, parameters: List[str]) -> Dict[str, Dict[str, any]]:
-        """
-        Analyze units for a list of parameters.
-        
-        Args:
-            parameters: List of parameter names
-            
-        Returns:
-            Dictionary with unit analysis for each parameter
-        """
-        analysis = {}
-        
-        for param in parameters:
-            unit = self.extract_unit_from_parameter(param)
-            category = self.get_unit_category(unit)
-            
-            analysis[param] = {
-                'unit': unit,
-                'category': category,
-                'base_name': self._get_base_parameter_name(param)
-            }
-        
-        return analysis
-    
-    def group_parameters_by_unit_compatibility(self, parameters: List[str]) -> List[List[str]]:
-        """
-        Group parameters by unit compatibility.
-        
-        Args:
-            parameters: List of parameter names
-            
-        Returns:
-            List of groups, where each group contains parameters with compatible units
-        """
-        analysis = self.analyze_parameter_units(parameters)
-        groups = []
-        grouped_params = set()
-        
-        for param in parameters:
-            if param in grouped_params:
-                continue
-                
-            # Start a new group
-            group = [param]
-            grouped_params.add(param)
-            param_category = analysis[param]['category']
-            
-            # Find other parameters with compatible units
-            for other_param in parameters:
-                if (other_param not in grouped_params and 
-                    other_param != param and
-                    analysis[other_param]['category'] == param_category):
-                    group.append(other_param)
-                    grouped_params.add(other_param)
-            
-            groups.append(group)
-        
-        return groups
-    
+
     def _get_base_parameter_name(self, param_name: str) -> str:
-        """
-        Get the base parameter name without units.
-        
-        Args:
-            param_name: Full parameter name
-            
-        Returns:
-            Base parameter name without units
-        """
-        # Remove units in parentheses
-        base = re.sub(r'\s*\([^)]*\)$', '', param_name.strip())
-        
-        # Only remove units after dash/space if it's a single "word" that looks like a unit
-        potential_base = re.sub(r'[\s\-]([A-Za-z%/²]{1,6})$', '', base.strip())
-        
-        # Only apply this removal if the removed part was likely a unit (short, no spaces)
-        removed_part_match = re.search(r'[\s\-]([A-Za-z%/²]{1,6})$', base.strip())
-        if removed_part_match:
-            removed_part = removed_part_match.group(1)
-            # Only remove if it looks like a unit (short and no internal spaces)
-            if len(removed_part) <= 6 and ' ' not in removed_part:
-                base = potential_base
-        
-        return base.strip() or param_name.strip()
+        # Remove parenthetical
+        base = PAREN_UNIT_RE.sub('', param_name).strip()
+        # If trailing token looks like an extracted unit, optionally strip it
+        m = TRAILING_TOKEN_RE.search(base)
+        if m:
+            tok = m.group(1)
+            # Only strip if recognized as a unit after normalization
+            if self.get_unit_category(tok) is not None or self.normalize_unit(tok) != tok:
+                base = base[:m.start()].strip()
+        return base or param_name
+
+    def analyze_parameter_units(self, parameters: List[str]) -> Dict[str, Dict[str, Any]]:
+        analysis: Dict[str, Dict[str, Any]] = {}
+        for p in parameters:
+            raw_unit = self.extract_unit_from_parameter(p)
+            normalized = self.normalize_unit(raw_unit)
+            category = self.get_unit_category(raw_unit)
+            analysis[p] = {
+                "raw_unit": raw_unit,
+                "unit": normalized,
+                "category": category,
+                "base_name": self._get_base_parameter_name(p)
+            }
+        return analysis
+
+    def group_parameters_by_unit_compatibility(self, parameters: List[str]) -> List[List[str]]:
+        analysis = self.analyze_parameter_units(parameters)
+        # Map (category) -> list of params
+        grouping: Dict[str, List[str]] = defaultdict(list)
+        for p in parameters:
+            cat = analysis[p]["category"] or f"__unknown__:{analysis[p]['unit']}"
+            grouping[cat].append(p)
+
+        # Deterministic ordering: sort categories then keep original parameter order within category
+        ordered_groups = []
+        for cat in sorted(grouping.keys()):
+            ordered_group = [p for p in parameters if p in grouping[cat]]
+            ordered_groups.append(ordered_group)
+        return ordered_groups
 
 
-def detect_unit_mismatch(parameters: List[str]) -> Dict[str, any]:
+def detect_unit_mismatch(parameters: List[str]) -> Dict[str, Any]:
     """
-    Detect unit mismatches in a list of parameters.
-    
-    Args:
-        parameters: List of parameter names
-        
-    Returns:
-        Dictionary with mismatch analysis
+    High-level mismatch detection used by ChartManager.
+    Returns structure:
+        {
+            'has_mismatch': bool,
+            'parameter_groups': List[List[str]],
+            'unique_categories': [...],
+            'unique_units': [...],
+            'parameter_analysis': {param: {...}},
+            'needs_dual_axis': bool
+        }
     """
     detector = UnitDetector()
     analysis = detector.analyze_parameter_units(parameters)
     groups = detector.group_parameters_by_unit_compatibility(parameters)
-    
-    # Identify mismatches
+
+    unique_categories: Set[str] = set()
+    unique_units: Set[str] = set()
+    for p in parameters:
+        info = analysis[p]
+        if info["category"]:
+            unique_categories.add(info["category"])
+        if info["unit"]:
+            unique_units.add(info["unit"])
+
     has_mismatch = len(groups) > 1
-    unique_categories = set()
-    unique_units = set()
-    
-    for param in parameters:
-        unit_info = analysis[param]
-        if unit_info['category']:
-            unique_categories.add(unit_info['category'])
-        if unit_info['unit']:
-            unique_units.add(unit_info['unit'])
-    
+    # Decide dual-axis necessity: at least 2 distinct semantic categories (exclude dimensionless only split)
+    categories_no_dimless = [c for c in unique_categories if c != "dimensionless"]
+    needs_dual = has_mismatch and len(categories_no_dimless) > 1
+
     return {
-        'has_mismatch': has_mismatch,
-        'parameter_groups': groups,
-        'unique_categories': list(unique_categories),
-        'unique_units': list(unique_units),
-        'parameter_analysis': analysis,
-        'needs_dual_axis': has_mismatch and len(unique_categories) > 1
+        "has_mismatch": has_mismatch,
+        "parameter_groups": groups,
+        "unique_categories": sorted(unique_categories),
+        "unique_units": sorted(u for u in unique_units if u),
+        "parameter_analysis": analysis,
+        "needs_dual_axis": needs_dual
     }
