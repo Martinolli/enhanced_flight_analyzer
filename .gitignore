@@ -1,2 +1,10 @@
 .venv/
 deprecated_files/
+# Test artifacts
+tests/__pycache__/
+*.pyc
+/tmp/
+# Build artifacts
+build/
+dist/
+*.egg-info/
