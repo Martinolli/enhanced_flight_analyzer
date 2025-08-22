@@ -88,18 +88,23 @@ figure = chart_manager.create_chart(dataframe, dual_config)
 ## Chart Types
 
 ### Line Charts
+
 Best for continuous time-series data and trend analysis.
 
 ### Scatter Charts
+
 Ideal for examining relationships between variables or non-continuous data.
 
 ### Bar Charts
+
 Suitable for categorical data and discrete measurements.
 
 ### Area Charts
+
 Useful for showing cumulative values or filled regions under curves.
 
 ### Frequency Charts
+
 Provides FFT or PSD analysis for frequency domain analysis.
 
 ## Backward Compatibility

@@ -239,7 +239,7 @@ Open your web browser and navigate to:
 1. Click "📊 Export Dashboard as HTML"
 2. Download the interactive dashboard file
 3. Share with colleagues or include in reports
-4. **Features**: 
+4. **Features**:
    - Fully interactive, standalone file
    - Export-optimized CSS with print/PDF support
    - High-DPI display compatibility
@@ -269,17 +269,20 @@ Open your web browser and navigate to:
 ### Export Best Practices
 
 #### For Publications and Reports
+
 - Use **SVG** or **PDF** formats for vector scalability
 - Enable export-safe styling for consistent appearance
 - Use higher DPI scaling (3x or 4x) for print materials
 - Choose appropriate chart sizes (1200x800 px minimum)
 
 #### For Presentations
+
 - Use **PNG** format with 2x or 3x scaling
 - Export-safe styling ensures readability on projectors
 - HTML export provides interactive demonstrations
 
 #### For Web and Digital Use
+
 - **PNG** format with 2x scaling for crisp displays
 - **HTML** export for interactive web dashboards
 - **JPEG** for smaller file sizes when needed

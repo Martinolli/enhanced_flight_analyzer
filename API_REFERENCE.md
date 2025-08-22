@@ -120,6 +120,7 @@ print(result['unique_categories'])  # ["temperature", "pressure", "angle"]
 ### Automatic Dual-Axis Creation
 
 The system automatically creates dual-axis charts when:
+
 1. Parameters have incompatible unit categories
 2. `force_unit_detection=True` is set
 3. `secondary_y_params` is explicitly specified
@@ -127,6 +128,7 @@ The system automatically creates dual-axis charts when:
 ### Single-Axis Charts
 
 Single-axis charts are used when:
+
 1. All parameters have compatible units
 2. `auto_detect_units=False` and no secondary params specified
 3. Only one parameter is plotted
@@ -140,6 +142,7 @@ Single-axis charts are used when:
 ## Examples
 
 See `examples/unit_detection_demo.py` for comprehensive examples demonstrating:
+
 - Automatic unit detection
 - Dual-axis chart creation
 - Manual unit specification
