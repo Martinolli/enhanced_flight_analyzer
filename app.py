@@ -186,9 +186,33 @@ with st.sidebar:
 
                 y_options = [c for c in numeric_cols if (chart_type == 'frequency' or c != x_param)]
                 y_default = [p for p in cfg_obj.y_params if p in y_options]
-                y_params = st.multiselect("Y Parameters", y_options, default=y_default, key=f"y_{chart_id}")
+                y_params = st.multiselect("Primary Y Parameters", y_options, default=y_default, key=f"y_{chart_id}")
 
-                y_label = st.text_input("Y Axis Label", value=cfg_obj.y_axis_label, key=f"ylab_{chart_id}")
+                # Secondary Y-axis controls
+                if chart_type != 'frequency':  # Frequency charts don't support secondary axis
+                    secondary_y_default = [p for p in cfg_obj.secondary_y_params if p in y_options]
+                    secondary_y_params = st.multiselect(
+                        "Secondary Y Parameters", 
+                        y_options, 
+                        default=secondary_y_default, 
+                        key=f"secondary_y_{chart_id}",
+                        help="Parameters to plot on the right Y-axis with different scaling"
+                    )
+                    
+                    if secondary_y_params:
+                        secondary_y_label = st.text_input(
+                            "Secondary Y Axis Label", 
+                            value=cfg_obj.secondary_y_axis_label, 
+                            key=f"secondary_ylab_{chart_id}",
+                            help="Label for the right Y-axis"
+                        )
+                    else:
+                        secondary_y_label = ""
+                else:
+                    secondary_y_params = []
+                    secondary_y_label = ""
+
+                y_label = st.text_input("Primary Y Axis Label", value=cfg_obj.y_axis_label, key=f"ylab_{chart_id}")
                 color_scheme = st.selectbox(
                     "Color Scheme",
                     ['viridis', 'plasma', 'inferno', 'magma', 'cividis', 'blues', 'reds', 'greens', 'purples'],
@@ -211,7 +235,9 @@ with st.sidebar:
                     chart_type=chart_type,
                     x_param=x_param,
                     y_params=y_params,
+                    secondary_y_params=secondary_y_params,
                     y_axis_label=y_label,
+                    secondary_y_axis_label=secondary_y_label,
                     color_scheme=color_scheme,
                     freq_type=freq_type,
                     sort_x=sort_x
