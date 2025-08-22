@@ -5,7 +5,61 @@ from typing import List, Optional, Dict, Any
 @dataclass
 class ChartConfig:
     """
-    Canonical chart configuration model.
+    Canonical chart configuration model for enhanced plotting functionality.
+    
+    This abstraction enables flexible chart creation with support for:
+    - Multiple chart types (line, scatter, bar, area, frequency)
+    - Dual-axis plotting with primary and secondary Y parameters
+    - Customizable styling via color schemes
+    - Extensible configuration for future chart enhancements
+    
+    Attributes:
+        id (str): Unique identifier for the chart configuration
+        title (str): Display title for the chart
+        chart_type (str): Type of chart to create. Options:
+            - 'line': Line plot for continuous data
+            - 'scatter': Scatter plot for point data  
+            - 'bar': Bar chart for categorical/discrete data
+            - 'area': Area chart with fill
+            - 'frequency': Frequency domain analysis (FFT/PSD)
+        x_param (str): Column name for X-axis data
+        y_params (List[str]): Column names for primary Y-axis parameters
+        secondary_y_params (List[str]): Column names for secondary Y-axis parameters
+            (enables dual-axis charts when specified)
+        y_axis_label (str): Label for primary Y-axis
+        secondary_y_axis_label (str): Label for secondary Y-axis
+        color_scheme (str): Color scheme for plot traces. Options:
+            'viridis', 'plasma', 'inferno', 'magma', 'cividis', 
+            'blues', 'reds', 'greens', 'purples'
+        freq_type (str): Frequency analysis type ('fft' or 'psd')
+        transformations (List[str]): Data transformations to apply
+        notes (Optional[str]): Additional notes about the chart
+        sort_x (bool): Whether to sort data by X parameter for line plots
+    
+    Example:
+        # Single-axis chart
+        config = ChartConfig(
+            id="altitude_speed",
+            title="Altitude and Speed vs Time",
+            chart_type="line",
+            x_param="Elapsed Time (s)",
+            y_params=["Altitude (ft)", "Airspeed (kts)"],
+            y_axis_label="Altitude & Speed",
+            color_scheme="viridis"
+        )
+        
+        # Dual-axis chart
+        config = ChartConfig(
+            id="altitude_temp",
+            title="Altitude vs Temperature",
+            chart_type="line",
+            x_param="Elapsed Time (s)",
+            y_params=["Altitude (ft)"],
+            secondary_y_params=["Temperature (C)"],
+            y_axis_label="Altitude (ft)",
+            secondary_y_axis_label="Temperature (C)",
+            color_scheme="plasma"
+        )
     """
     id: str
     title: str = "Chart"
@@ -51,7 +105,48 @@ class ChartConfig:
         return base
 
 
+"""
+ChartConfig Migration and Configuration Functions
+
+This module provides utilities for working with the ChartConfig abstraction,
+including migration from legacy dictionary-based configurations.
+
+The ChartConfig abstraction supports:
+- Single and dual-axis charts
+- Multiple chart types (line, scatter, bar, area, frequency)
+- Flexible color schemes and styling
+- Backward compatibility with dictionary configurations
+"""
+
 def migrate_chart_dict(old: Dict[str, Any]) -> ChartConfig:
+    """
+    Migrate legacy dictionary-based chart configuration to ChartConfig object.
+    
+    This function ensures backward compatibility by converting old-style
+    dictionary configurations to the new ChartConfig abstraction.
+    
+    Args:
+        old: Dictionary containing chart configuration or existing ChartConfig
+        
+    Returns:
+        ChartConfig object with migrated configuration
+        
+    Example:
+        # Legacy dictionary config
+        old_config = {
+            "id": "altitude_chart",
+            "title": "Altitude vs Time",
+            "type": "line",
+            "x_axis": "Elapsed Time (s)", 
+            "parameters": ["Altitude (ft)"],
+            "secondary_y_params": ["Temperature (C)"],
+            "y_axis_label": "Altitude",
+            "secondary_y_axis_label": "Temperature"
+        }
+        
+        # Convert to ChartConfig
+        config = migrate_chart_dict(old_config)
+    """
     if isinstance(old, ChartConfig):
         return old
     return ChartConfig(
