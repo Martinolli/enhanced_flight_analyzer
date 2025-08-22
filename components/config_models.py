@@ -20,6 +20,15 @@ class ChartConfig:
     transformations: List[str] = field(default_factory=list)
     notes: Optional[str] = None
     sort_x: bool = False                # New: if True and non-time X, sort to keep line plot
+    
+    # Unit annotation and scale synchronization options
+    auto_detect_units: bool = True      # Automatically detect units from parameter names
+    force_unit_detection: bool = False  # Force dual-axis even if units appear compatible
+    manual_y_unit: Optional[str] = None # Manual override for primary y-axis unit
+    manual_secondary_y_unit: Optional[str] = None # Manual override for secondary y-axis unit
+    synchronize_scales: bool = False    # Synchronize y-axis scales when units are compatible
+    show_units_in_legend: bool = True   # Show units in legend entries
+    unit_annotation_style: str = "parentheses" # "parentheses", "bracket", "suffix"
 
     def to_legacy_dict(self) -> Dict[str, Any]:
         return {
@@ -38,7 +47,14 @@ class ChartConfig:
             "freq_type": self.freq_type,
             "transformations": list(self.transformations),
             "notes": self.notes,
-            "sort_x": self.sort_x
+            "sort_x": self.sort_x,
+            "auto_detect_units": self.auto_detect_units,
+            "force_unit_detection": self.force_unit_detection,
+            "manual_y_unit": self.manual_y_unit,
+            "manual_secondary_y_unit": self.manual_secondary_y_unit,
+            "synchronize_scales": self.synchronize_scales,
+            "show_units_in_legend": self.show_units_in_legend,
+            "unit_annotation_style": self.unit_annotation_style
         }
 
     def as_dict(self) -> Dict[str, Any]:
@@ -67,5 +83,12 @@ def migrate_chart_dict(old: Dict[str, Any]) -> ChartConfig:
         freq_type=old.get("freq_type", "fft"),
         transformations=old.get("transformations", []),
         notes=old.get("notes"),
-        sort_x=old.get("sort_x", False)
+        sort_x=old.get("sort_x", False),
+        auto_detect_units=old.get("auto_detect_units", True),
+        force_unit_detection=old.get("force_unit_detection", False),
+        manual_y_unit=old.get("manual_y_unit"),
+        manual_secondary_y_unit=old.get("manual_secondary_y_unit"),
+        synchronize_scales=old.get("synchronize_scales", False),
+        show_units_in_legend=old.get("show_units_in_legend", True),
+        unit_annotation_style=old.get("unit_annotation_style", "parentheses")
     )
