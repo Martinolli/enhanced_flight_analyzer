@@ -11,12 +11,15 @@
 
 
 
+# (Only sections that changed are annotated with # >>> UPDATED <<< comments for clarity)
+# Full file included for ease of replacement.
+
 import streamlit as st
 import pandas as pd
-
 import numpy as np
 from datetime import datetime
 import uuid
+
 from components.chart_manager import ChartManager
 from components.data_processor import DataProcessor
 from components.layout_manager import LayoutManager
@@ -54,7 +57,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Session
 if 'charts' not in st.session_state:
     st.session_state.charts = {}
 if 'layout_config' not in st.session_state:
@@ -62,13 +64,11 @@ if 'layout_config' not in st.session_state:
 if 'data' not in st.session_state:
     st.session_state.data = None
 if 'schema_version' not in st.session_state:
-    st.session_state.schema_version = 2  # bumped for sort_x field
-
+    st.session_state.schema_version = 3  # >>> UPDATED <<< bumped for new freq fields / dual axis UI
 
 chart_manager = ChartManager()
 data_processor = DataProcessor()
 layout_manager = LayoutManager()
-
 export_manager = ExportManager()
 
 def migrate_all_charts():
@@ -87,8 +87,6 @@ def show_chart(fig, title_base: str | None = None, key: str | None = None, heigh
     if fig is None:
         st.info("No figure to display.")
         return
-
-    # Derive a safe title/filename
     title = title_base
     if not title:
         try:
@@ -96,20 +94,15 @@ def show_chart(fig, title_base: str | None = None, key: str | None = None, heigh
         except Exception:
             title = "chart"
     safe_title = sanitize_filename(str(title)) or "chart"
-
-    # Optional height override
     if height:
         try:
             fig.update_layout(height=height)
         except Exception:
             pass
-
-    # Build config for downloads; fall back to minimal config if needed
     try:
         cfg = download_config(safe_title)
     except Exception:
         cfg = {"responsive": True, "displaylogo": False}
-
     st.plotly_chart(fig, use_container_width=True, config=cfg, key=key)
 
 st.markdown("""
@@ -119,7 +112,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Sidebar
 with st.sidebar:
     st.header("🎛️ Control Panel")
     uploaded_file = st.file_uploader("Upload Flight Data File", type=["csv", "txt"])
@@ -172,6 +164,7 @@ with st.sidebar:
                     key=f"x_{chart_id}"
                 )
 
+                # Frequency-specific controls
                 if chart_type == 'frequency':
                     freq_type = st.selectbox(
                         "Frequency Analysis Type",
@@ -179,16 +172,106 @@ with st.sidebar:
                         index=0 if cfg_obj.freq_type == 'fft' else 1,
                         key=f"freq_{chart_id}"
                     )
+                    st.markdown("**Frequency Options**")
+                    colf1, colf2, colf3 = st.columns(3)
+                    with colf1:
+                        freq_detrend = st.checkbox("Detrend", value=cfg_obj.freq_detrend, key=f"fdetr_{chart_id}")
+                        freq_log = st.checkbox("Log Scale Y", value=cfg_obj.freq_log_scale, key=f"flog_{chart_id}")
+                    with colf2:
+                        freq_window = st.selectbox("Window", ['hann', 'hamming', 'blackman', 'rect'],
+                                                   index=['hann', 'hamming', 'blackman', 'rect'].index(cfg_obj.freq_window),
+                                                   key=f"fwin_{chart_id}")
+                        freq_peak = st.checkbox("Annotate Peak", value=cfg_obj.freq_peak_annotation, key=f"fpeak_{chart_id}")
+                    with colf3:
+                        freq_min_points = st.number_input("Min Points", min_value=4, max_value=2048,
+                                                          value=cfg_obj.freq_min_points, key=f"fminp_{chart_id}")
+                        freq_irregular_tol = st.number_input("Irregular Tol (CV)", min_value=0.0, max_value=0.5,
+                                                             value=float(cfg_obj.freq_irregular_tol), step=0.01,
+                                                             key=f"firtol_{chart_id}")
                     if x_param not in ("Elapsed Time (s)", "Timestamp"):
-                        st.info("Frequency charts ignore custom X and use time sampling.")
+                        st.info("Frequency charts derive sampling from time columns regardless of selected X.")
                 else:
                     freq_type = cfg_obj.freq_type
+                    freq_detrend = cfg_obj.freq_detrend
+                    freq_window = cfg_obj.freq_window
+                    freq_log = cfg_obj.freq_log_scale
+                    freq_peak = cfg_obj.freq_peak_annotation
+                    freq_min_points = cfg_obj.freq_min_points
+                    freq_irregular_tol = cfg_obj.freq_irregular_tol
 
                 y_options = [c for c in numeric_cols if (chart_type == 'frequency' or c != x_param)]
                 y_default = [p for p in cfg_obj.y_params if p in y_options]
-                y_params = st.multiselect("Y Parameters", y_options, default=y_default, key=f"y_{chart_id}")
+                y_params = st.multiselect("Primary Y Parameters", y_options, default=y_default, key=f"y_{chart_id}")
 
-                y_label = st.text_input("Y Axis Label", value=cfg_obj.y_axis_label, key=f"ylab_{chart_id}")
+                # >>> UPDATED <<< Dual axis / unit detection UI for non-frequency charts
+                secondary_y_params = list(cfg_obj.secondary_y_params)
+                synchronize_scales = cfg_obj.synchronize_scales
+                auto_detect_units = cfg_obj.auto_detect_units
+                force_unit_detection = cfg_obj.force_unit_detection
+                show_units_in_legend = cfg_obj.show_units_in_legend
+                unit_annotation_style = cfg_obj.unit_annotation_style
+                manual_y_unit = cfg_obj.manual_y_unit
+                manual_secondary_y_unit = cfg_obj.manual_secondary_y_unit
+
+                if chart_type != 'frequency':
+                    enable_secondary = st.checkbox("Enable Secondary Y Axis", value=bool(secondary_y_params),
+                                                   key=f"sec_enable_{chart_id}")
+                    if enable_secondary:
+                        available_secondary = [p for p in y_options if p not in y_params]
+                        secondary_y_params = st.multiselect(
+                            "Secondary Y Parameters",
+                            available_secondary,
+                            default=[p for p in secondary_y_params if p in available_secondary],
+                            key=f"sec_params_{chart_id}"
+                        )
+                    else:
+                        secondary_y_params = []
+
+                    st.markdown("**Unit / Axis Options**")
+                    colu1, colu2, colu3 = st.columns(3)
+                    with colu1:
+                        auto_detect_units = st.checkbox("Auto Detect Units", value=auto_detect_units,
+                                                        key=f"auto_units_{chart_id}")
+                        show_units_in_legend = st.checkbox("Units in Legend", value=show_units_in_legend,
+                                                           key=f"units_leg_{chart_id}")
+                    with colu2:
+                        force_unit_detection = st.checkbox("Force Dual-Axis Split", value=force_unit_detection,
+                                                           key=f"force_unit_{chart_id}")
+                        synchronize_scales = st.checkbox("Sync Scales", value=synchronize_scales,
+                                                         key=f"sync_{chart_id}")
+                    with colu3:
+                        unit_annotation_style = st.selectbox("Unit Style",
+                                                             ["parentheses", "bracket", "suffix"],
+                                                             index=["parentheses", "bracket", "suffix"].index(unit_annotation_style),
+                                                             key=f"ustyle_{chart_id}")
+
+                    if not auto_detect_units:
+                        colm1, colm2 = st.columns(2)
+                        with colm1:
+                            manual_y_unit = st.text_input("Primary Unit Override", value=manual_y_unit or "",
+                                                          key=f"munit_{chart_id}")
+                        with colm2:
+                            manual_secondary_y_unit = st.text_input("Secondary Unit Override",
+                                                                    value=manual_secondary_y_unit or "",
+                                                                    key=f"munit2_{chart_id}")
+                else:
+                    secondary_y_params = []
+                    synchronize_scales = False
+                    auto_detect_units = True
+                    force_unit_detection = False
+                    show_units_in_legend = True
+                    unit_annotation_style = "parentheses"
+                    manual_y_unit = None
+                    manual_secondary_y_unit = None
+
+                y_label = st.text_input("Primary Y Axis Label", value=cfg_obj.y_axis_label, key=f"ylab_{chart_id}")
+                if chart_type != 'frequency':
+                    secondary_y_axis_label = st.text_input("Secondary Y Axis Label",
+                                                           value=cfg_obj.secondary_y_axis_label or "",
+                                                           key=f"ylab2_{chart_id}")
+                else:
+                    secondary_y_axis_label = ""
+
                 color_scheme = st.selectbox(
                     "Color Scheme",
                     ['viridis', 'plasma', 'inferno', 'magma', 'cividis', 'blues', 'reds', 'greens', 'purples'],
@@ -199,11 +282,11 @@ with st.sidebar:
                 sort_x = cfg_obj.sort_x
                 if chart_type == "line" and x_param not in ("Elapsed Time (s)", "Timestamp"):
                     if not df[x_param].is_monotonic_increasing:
-                        sort_x = st.checkbox("Sort X to keep line plot (else fallback to scatter)", value=cfg_obj.sort_x, key=f"sort_{chart_id}")
+                        sort_x = st.checkbox("Sort X for line continuity", value=cfg_obj.sort_x, key=f"sort_{chart_id}")
                         if not sort_x:
-                            st.info("ℹ️ Non-time X not monotonic; will show scatter unless sorting enabled.")
+                            st.info("Non-monotonic X → will fallback to scatter.")
                     else:
-                        sort_x = False  # monotonic already; no need
+                        sort_x = False
 
                 updated = ChartConfig(
                     id=chart_id,
@@ -211,10 +294,25 @@ with st.sidebar:
                     chart_type=chart_type,
                     x_param=x_param,
                     y_params=y_params,
+                    secondary_y_params=secondary_y_params,
                     y_axis_label=y_label,
+                    secondary_y_axis_label=secondary_y_axis_label,
                     color_scheme=color_scheme,
                     freq_type=freq_type,
-                    sort_x=sort_x
+                    sort_x=sort_x,
+                    auto_detect_units=auto_detect_units,
+                    force_unit_detection=force_unit_detection,
+                    synchronize_scales=synchronize_scales,
+                    show_units_in_legend=show_units_in_legend,
+                    unit_annotation_style=unit_annotation_style,
+                    manual_y_unit=manual_y_unit or None,
+                    manual_secondary_y_unit=manual_secondary_y_unit or None,
+                    freq_detrend=freq_detrend,
+                    freq_window=freq_window,
+                    freq_log_scale=freq_log,
+                    freq_peak_annotation=freq_peak,
+                    freq_min_points=freq_min_points,
+                    freq_irregular_tol=freq_irregular_tol
                 )
                 st.session_state.charts[chart_id] = updated.as_dict()
 
@@ -223,7 +321,8 @@ with st.sidebar:
                     st.rerun()
 
         st.subheader("📤 Export")
-        export_debug = st.checkbox("Enable export debug info", value=False, help="Include detailed notes & config dump in HTML export.")
+        export_debug = st.checkbox("Enable export debug info", value=False,
+                                   help="Include detailed notes & config dump in HTML export.")
         if st.button("Export HTML Dashboard"):
             html_content = export_manager.export_dashboard_html(
                 st.session_state.charts,
@@ -238,16 +337,12 @@ with st.sidebar:
                     mime="text/html"
                 )
 
-        # if st.button("Export Charts as PNG Zip"):
-
-
         if st.button("Export Charts as HTML Zip"):
             blob = export_charts_as_html_zip(st.session_state.charts, df, chart_manager)
             st.download_button("Download HTML Zip", data=blob, file_name="charts_html.zip")
     else:
         st.info("📁 Upload a flight data file to begin.")
 
-# Main area
 if st.session_state.data is not None:
     df = st.session_state.data
     non_param = {'Timestamp', 'Elapsed Time (s)'}
@@ -274,34 +369,6 @@ if st.session_state.data is not None:
         )
     else:
         st.info("👆 Add charts using the sidebar to start visualizing your flight data!")
-        st.header("🚀 Quick Start Templates")
-        col_q1, col_q2, col_q3 = st.columns(3)
-
-        def add_template(title, keywords, label, scheme):
-            params = [c for c in df.columns if any(k in c.lower() for k in keywords)]
-            if params:
-                cid = f"chart_{uuid.uuid4().hex[:8]}"
-                st.session_state.charts[cid] = ChartConfig(
-                    id=cid,
-                    title=title,
-                    chart_type='line',
-                    x_param='Elapsed Time (s)',
-                    y_params=params[:4],
-                    y_axis_label=label,
-                    color_scheme=scheme
-                ).as_dict()
-                # Streamlit >=1.30+: experimental_rerun removed; use st.rerun()
-                st.rerun()
-
-        with col_q1:
-            if st.button("🎯 Control Surfaces Analysis", use_container_width=True):
-                add_template("Control Surfaces", ['aileron', 'elevator', 'rudder', 'flap'], "Deflection (deg)", 'viridis')
-        with col_q2:
-            if st.button("📐 Angle Analysis", use_container_width=True):
-                add_template("Flight Angles", ['angle', 'alpha', 'beta'], "Angle (deg)", 'plasma')
-        with col_q3:
-            if st.button("⚖️ Force Analysis", use_container_width=True):
-                add_template("Force Measurements", ['force', 'strain', 'load'], "Force (kg)", 'inferno')
 
     st.header("🔬 Advanced Analysis")
     tabs = st.tabs(["Parameter Correlation", "Statistical Summary", "Data Quality"])
@@ -355,33 +422,10 @@ if st.session_state.data is not None:
 
 else:
     st.info("📁 Please upload a flight data file to begin analysis")
-    with st.expander("📋 Expected Data Format", expanded=True):
-        st.markdown("""
-        **File Format Requirements:**
-        - CSV with two header rows (names, units)
-        - Timestamp format: `day:hour:minute:second.millisecond`
-        - Numeric parameters afterwards
-        """)
-    st.header("✨ Enhanced Features")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("""
-        **🎯 Multi-Chart Dashboard**
-        - Arbitrary X vs Y plotting
-        - Multiple grid layouts
-        - Real-time configuration
-        """)
-    with c2:
-        st.markdown("""
-        **📤 Export & Analysis**
-        - HTML & PNG exports
-        - Correlation, stats, quality checks
-        - Frequency (FFT/PSD) analysis
-        """)
 
 st.markdown("---")
 st.markdown("""
 <div style='text-align:center;color:#666;padding:20px;'>
-Enhanced Flight Data Analyzer Pro v2.2.0
+Enhanced Flight Data Analyzer Pro v2.3.0-dev
 </div>
 """, unsafe_allow_html=True)
