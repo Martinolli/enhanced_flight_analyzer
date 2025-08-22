@@ -168,7 +168,6 @@ class ChartManager:
             fig.update_layout(
                 title=cfg.title,
                 xaxis_title=cfg.x_param,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
 
             # Set y-axis titles
@@ -283,7 +282,11 @@ class ChartManager:
                 title=cfg.title or "Frequency Analysis",
                 xaxis_title="Frequency (Hz)",
                 yaxis_title="Magnitude",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                # Export-friendly defaults
+                font=dict(family="Arial, sans-serif", size=12, color="black"),
+                plot_bgcolor="white",
+                paper_bgcolor="white"
             )
             return fig
         except Exception as e:

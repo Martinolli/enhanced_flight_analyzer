@@ -125,20 +125,125 @@ class ExportManager:
 <html>
 <head>
 <meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Flight Data Analysis Dashboard</title>
 <style>
-body {{ font-family: Arial, sans-serif; margin: 20px; }}
-.grid {{ display: flex; flex-wrap: wrap; gap: 20px; }}
-.chart-container {{
-  flex: 1 1 45%; 
-  min-width: 420px;
-  border:1px solid #ddd;
-  padding:10px;
-  border-radius:6px;
-  box-shadow:0 2px 4px rgba(0,0,0,.05);
+/* Base styles with export-safe typography */
+body {{ 
+  font-family: 'Arial', 'Helvetica', sans-serif; 
+  margin: 20px; 
+  line-height: 1.4;
+  color: #333;
+  background: white;
 }}
-h1 {{ text-align:center; }}
-pre.metadata {{ background:#f7f7f7; padding:10px; border-radius:4px; }}
+
+/* Grid layout with improved responsiveness */
+.grid {{ 
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}}
+
+/* Chart containers with export-optimized styling */
+.chart-container {{
+  border: 1px solid #ccc;
+  padding: 15px;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  min-height: 400px;
+  page-break-inside: avoid; /* PDF export optimization */
+}}
+
+/* Typography optimizations */
+h1 {{ 
+  text-align: center; 
+  font-size: 28px;
+  margin-bottom: 30px;
+  color: #2c3e50;
+  page-break-after: avoid;
+}}
+
+h2 {{ 
+  font-size: 20px;
+  margin-top: 30px;
+  margin-bottom: 15px;
+  color: #34495e;
+  page-break-after: avoid;
+}}
+
+/* Metadata and notes styling */
+pre.metadata {{ 
+  background: #f8f9fa; 
+  padding: 15px; 
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+  font-size: 12px;
+  overflow-x: auto;
+  page-break-inside: avoid;
+}}
+
+/* Export notes styling */
+ul {{ 
+  margin: 10px 0;
+  padding-left: 20px;
+}}
+
+li {{ 
+  margin-bottom: 8px;
+}}
+
+li pre {{
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  margin: 5px 0;
+}}
+
+/* Print/PDF optimizations */
+@media print {{
+  body {{ 
+    margin: 0; 
+    font-size: 12pt;
+  }}
+  
+  .grid {{
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }}
+  
+  .chart-container {{
+    margin-bottom: 20px;
+    border: 2px solid #333;
+    box-shadow: none;
+    min-height: 350px;
+  }}
+  
+  h1 {{ 
+    font-size: 24pt;
+    margin-bottom: 20px;
+  }}
+  
+  h2 {{ 
+    font-size: 16pt;
+    margin-top: 20px;
+  }}
+  
+  /* Ensure charts don't break across pages */
+  .chart-container, pre.metadata {{
+    page-break-inside: avoid;
+  }}
+}}
+
+/* High-DPI display optimizations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {{
+  .chart-container {{
+    border-width: 0.5px;
+  }}
+}}
 </style>
 </head>
 <body>
@@ -159,10 +264,26 @@ pre.metadata {{ background:#f7f7f7; padding:10px; border-radius:4px; }}
         self,
         charts: Dict[str, Dict[str, Any]],
         df: pd.DataFrame,
-        fmt: str = "png"
+        fmt: str = "png",
+        scale: float = 2.0,
+        width: int = 1200,
+        height: int = 800,
+        export_safe_styling: bool = True
     ) -> bytes:
         """
-        Export charts as images zipped. Each failed chart produces an ERROR_ file in the zip.
+        Export charts as images zipped with export-safe styling.
+        
+        Args:
+            charts: Chart configuration dictionary
+            df: DataFrame with data
+            fmt: Export format ('png', 'svg', 'pdf', 'jpg', 'jpeg', 'webp', 'eps')
+            scale: Scale factor for high-DPI output (affects raster formats)
+            width: Image width in pixels
+            height: Image height in pixels
+            export_safe_styling: Apply export-optimized styling
+        
+        Returns:
+            ZIP file bytes containing exported charts
         """
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -174,8 +295,25 @@ pre.metadata {{ background:#f7f7f7; padding:10px; border-radius:4px; }}
                     if not fig:
                         zf.writestr(f"SKIPPED_{chart_id}.txt", "No figure generated.")
                         continue
+                    
+                    # Apply export-safe styling
+                    if export_safe_styling:
+                        fig = self._apply_export_safe_styling(fig, fmt)
+                    
                     safe_base = _sanitize_html_id(cfg_obj.title.replace(' ', '_')) or _sanitize_html_id(cfg_obj.id)
-                    img_bytes = fig.to_image(format=fmt, scale=2)
+                    
+                    # Configure export parameters based on format
+                    export_params = {
+                        'format': fmt,
+                        'width': width,
+                        'height': height
+                    }
+                    
+                    # Scale factor only applies to raster formats
+                    if fmt.lower() in ['png', 'jpg', 'jpeg', 'webp']:
+                        export_params['scale'] = scale
+                    
+                    img_bytes = fig.to_image(**export_params)
                     zf.writestr(f"{safe_base}.{fmt}", img_bytes)
                 except Exception as e:
                     zf.writestr(f"ERROR_{chart_id}.txt", f"{e}\n{traceback.format_exc()}")
@@ -212,6 +350,99 @@ pre.metadata {{ background:#f7f7f7; padding:10px; border-radius:4px; }}
         load_script = f"var ensurePlotly=window._fallbackPlotlyLoaded; if(!ensurePlotly){{var s=document.createElement('script');s.src='{loader}';s.onload=function(){{window._fallbackPlotlyLoaded=true;Plotly.newPlot('chart_{safe_id}', {json.dumps(fig_json.get('data', []))}, {json.dumps(fig_json.get('layout', {}))});}};document.head.appendChild(s);}} else {{Plotly.newPlot('chart_{safe_id}', {json.dumps(fig_json.get('data', []))}, {json.dumps(fig_json.get('layout', {}))});}}"
         js_code = load_script
         return div_html, js_code
+
+    def _apply_export_safe_styling(self, fig, export_format: str):
+        """
+        Apply export-safe styling optimizations for different formats.
+        
+        Args:
+            fig: Plotly figure object
+            export_format: Target export format ('png', 'svg', 'pdf', etc.)
+        
+        Returns:
+            Modified figure with export-optimized styling
+        """
+        # Create a copy to avoid modifying the original
+        fig_copy = fig
+        
+        # Font optimizations for export
+        export_font_family = "Arial, sans-serif"  # Widely supported font
+        export_font_size = 14 if export_format.lower() in ['svg', 'pdf'] else 12
+        
+        # Title font size should be larger
+        title_font_size = export_font_size + 4
+        
+        # Axis and legend font sizes
+        axis_font_size = export_font_size - 1
+        legend_font_size = export_font_size - 1
+        
+        # Color and line optimizations
+        if export_format.lower() in ['pdf', 'svg']:
+            # Vector formats: use crisp lines and ensure good contrast
+            line_width = 2.5
+            marker_size = 8
+            grid_color = "rgba(128, 128, 128, 0.3)"
+        else:
+            # Raster formats: slightly thicker for better visibility at various scales
+            line_width = 2.0
+            marker_size = 6
+            grid_color = "rgba(128, 128, 128, 0.2)"
+        
+        # Apply layout optimizations
+        fig_copy.update_layout(
+            # Font settings
+            font=dict(
+                family=export_font_family,
+                size=export_font_size,
+                color="black"
+            ),
+            title=dict(
+                font=dict(
+                    family=export_font_family,
+                    size=title_font_size,
+                    color="black"
+                )
+            ),
+            # Axis improvements
+            xaxis=dict(
+                title_font=dict(size=axis_font_size, family=export_font_family),
+                tickfont=dict(size=axis_font_size-1, family=export_font_family),
+                gridcolor=grid_color,
+                linecolor="black",
+                linewidth=1
+            ),
+            yaxis=dict(
+                title_font=dict(size=axis_font_size, family=export_font_family),
+                tickfont=dict(size=axis_font_size-1, family=export_font_family),
+                gridcolor=grid_color,
+                linecolor="black",
+                linewidth=1
+            ),
+            # Legend optimizations
+            legend=dict(
+                font=dict(size=legend_font_size, family=export_font_family),
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                bordercolor="black",
+                borderwidth=1
+            ),
+            # Background and margins for export
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            margin=dict(l=80, r=80, t=100, b=80)  # Adequate margins for export
+        )
+        
+        # Apply trace-level optimizations
+        for trace in fig_copy.data:
+            if hasattr(trace, 'line') and trace.line:
+                trace.line.width = line_width
+            if hasattr(trace, 'marker') and trace.marker:
+                if hasattr(trace.marker, 'size'):
+                    trace.marker.size = marker_size
+                # Ensure markers have good contrast
+                if hasattr(trace.marker, 'line'):
+                    trace.marker.line = dict(width=1, color="white")
+        
+        return fig_copy
 
     def _escape_html(self, text: str) -> str:
         return (text.replace("&", "&amp;")

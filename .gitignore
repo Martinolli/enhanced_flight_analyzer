@@ -1,7 +1,2 @@
 .venv/
 deprecated_files/
-
-# Python cache files
-__pycache__/
-*.pyc
-*.pyo

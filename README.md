@@ -30,9 +30,11 @@ Status: v2.2.0 (Foundational feature set complete – next phase will add dual Y
 
 ### Export & Reporting
 
-- HTML dashboard export (interactive, all charts, metadata, notes)
+- **Enhanced HTML dashboard export** with export-safe styling and print/PDF optimization
+- **Multi-format image export** (PNG, SVG, PDF, JPEG) with configurable high-DPI scaling
+- **Export-safe styling** optimizations for professional publication quality
+- **Vector format support** (SVG, PDF) for presentations and reports
 - Robust fallback export strategy (avoids Plotly serialization edge cases)
-- Batch PNG image export (ZIP) (requires `kaleido`)
 - Skipped/failed charts logged in Export Notes (HTML)
 - Deterministic export ordering
 
@@ -130,8 +132,14 @@ streamlit run app.py
 
 ### 5. Export
 
-- “Export HTML Dashboard” → full interactive single file
-- “Export Charts as PNG Zip” → batch image export (needs kaleido)
+Enhanced export capabilities with professional quality output:
+
+- **HTML Dashboard Export**: Interactive single file with export-optimized CSS for print/PDF
+- **Multi-Format Image Export**: PNG, SVG, PDF, JPEG with configurable quality settings
+  - High-DPI scaling support (2x, 3x, 4x) for retina displays
+  - Export-safe styling with optimized fonts and colors
+  - Vector formats (SVG, PDF) for publications and presentations
+  - Professional formatting for reports and documentation
 
 ---
 

@@ -9,9 +9,27 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/) and Seman
 - Derived parameter engine
 - Anomaly detection overlay
 - Dashboard save/load
-- Enhanced HTML export layout (grid responsiveness)
-- PDF report generation
 - Plugin system skeleton
+
+## [2.2.1] - 2025-01-15
+
+### Added
+- **Export-safe styling** with professional formatting for high-DPI and vector outputs
+- **Multi-format image export** (PNG, SVG, PDF, JPEG) with configurable scaling
+- **Vector format support** (SVG, PDF) for presentations and publications
+- **Enhanced HTML export** with print/PDF-optimized CSS and responsive grid layout
+- **High-DPI scaling** support (2x, 3x, 4x) for retina displays and professional printing
+- Export-optimized chart styling with consistent fonts, colors, and layouts
+
+### Changed
+- Updated export workflow to apply format-specific styling optimizations
+- Enhanced HTML dashboard with professional CSS Grid layout and print media queries
+- Improved chart default styling for better export compatibility
+- Enhanced documentation with comprehensive export workflow guidance
+
+### Fixed
+- Export compatibility across different output formats and display densities
+- Professional appearance consistency in exported materials
 
 ## [2.2.0] - 2025-08-12
 
