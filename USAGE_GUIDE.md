@@ -162,6 +162,30 @@ Open your web browser and navigate to:
 3. Check parameter ranges and data integrity
 4. Use for: Data validation before analysis
 
+### Unit Detection and Dual-Axis Charts
+
+**New in this version**: The analyzer now automatically detects units from parameter names and creates appropriate dual-axis charts when needed.
+
+#### Automatic Unit Detection
+
+- Extracts units from parameter names like "Temperature (DGC)" or "Force (N)"
+- Recognizes common aviation units: degrees, Newtons, PSI, knots, etc.
+- Groups parameters by unit compatibility (e.g., temperature units together)
+- Automatically creates dual-axis charts for incompatible units
+
+#### Manual Unit Control
+
+- Override automatic detection with `auto_detect_units: false`
+- Specify units manually with `manual_y_unit` and `manual_secondary_y_unit`
+- Force dual-axis charts with `force_unit_detection: true`
+- Control unit display in legends with `show_units_in_legend`
+
+#### Scale Synchronization
+
+- Synchronize y-axis scales for compatible units with `synchronize_scales: true`
+- Helps compare parameters with same units but different scales
+- Maintains proportional relationships between parameters
+
 ## Customization Tips
 
 ### Chart Titles
@@ -175,6 +199,23 @@ Open your web browser and navigate to:
 - Always include units: "Time (s)", "Angle (deg)", "Force (kg)"
 - Use standard aviation terminology
 - Keep labels concise but descriptive
+- **New**: Units are now automatically detected and added to axis labels
+- Override automatic labeling with manual unit specification
+
+### Unit Management
+
+- **Automatic Detection**: Units are extracted from parameter names like "Temperature (DGC)"
+- **Compatible Units**: Parameters with same unit types (e.g., temperature) use single axis
+- **Incompatible Units**: Different unit types automatically create dual-axis charts
+- **Manual Override**: Specify `manual_y_unit` and `manual_secondary_y_unit` for custom control
+- **Force Dual-Axis**: Use `force_unit_detection: true` to separate compatible units
+
+### Dual-Axis Charts
+
+- Automatically created when mixing incompatible units
+- Primary axis (left): Usually the first or most important parameter
+- Secondary axis (right): Different unit type, shown with dashed lines
+- **Scale Sync**: Enable `synchronize_scales` for compatible units with different ranges
 
 ### Color Schemes
 
@@ -187,7 +228,9 @@ Open your web browser and navigate to:
 
 - Group related parameters together
 - Limit to 3-4 parameters per chart for clarity
-- Use separate charts for different units/scales
+- **New**: Mixed units will automatically create dual-axis charts
+- Use separate charts for different units/scales only when auto-detection isn't suitable
+- Consider unit compatibility when grouping parameters
 
 ## Export Options
 
@@ -256,6 +299,8 @@ Open your web browser and navigate to:
 - Include meaningful titles and axis labels
 - Group related parameters in the same chart
 - Use appropriate chart types for data characteristics
+- **New**: Let the system auto-detect units and create dual-axis charts when needed
+- Use separate charts for vastly different parameter types
 
 ### Dashboard Layout
 
