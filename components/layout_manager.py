@@ -433,6 +433,42 @@ class LayoutManager:
                 'y_axis_label': 'Trim (deg)',
                 'color_scheme': 'cividis'
             })
+            chart_id += 1
+        
+        # Dual-axis example: Altitude vs Temperature
+        altitude_params = [col for col in df.columns if any(keyword in col.lower() for keyword in ['altitude', 'height'])]
+        temp_params = [col for col in df.columns if any(keyword in col.lower() for keyword in ['temp', 'temperature'])]
+        
+        if altitude_params and temp_params:
+            charts.append({
+                'id': f'template_chart_{chart_id}',
+                'title': 'Altitude vs Temperature (Dual-Axis)',
+                'type': 'line',
+                'parameters': altitude_params[:2],
+                'secondary_y_params': temp_params[:2],
+                'x_axis': 'Elapsed Time (s)',
+                'y_axis_label': 'Altitude',
+                'secondary_y_axis_label': 'Temperature',
+                'color_scheme': 'magma'
+            })
+            chart_id += 1
+        
+        # Dual-axis example: Speed vs Engine parameters
+        speed_params = [col for col in df.columns if any(keyword in col.lower() for keyword in ['speed', 'velocity', 'airspeed'])]
+        engine_params = [col for col in df.columns if any(keyword in col.lower() for keyword in ['rpm', 'power', 'thrust', 'engine'])]
+        
+        if speed_params and engine_params:
+            charts.append({
+                'id': f'template_chart_{chart_id}',
+                'title': 'Speed vs Engine (Dual-Axis)',
+                'type': 'line',
+                'parameters': speed_params[:2],
+                'secondary_y_params': engine_params[:2],
+                'x_axis': 'Elapsed Time (s)',
+                'y_axis_label': 'Speed',
+                'secondary_y_axis_label': 'Engine Parameters',
+                'color_scheme': 'blues'
+            })
         
         return charts
     
