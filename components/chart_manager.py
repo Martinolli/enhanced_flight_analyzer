@@ -1,8 +1,9 @@
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, List
 from scipy.signal import welch
 from scipy.fft import fft, fftfreq
 
@@ -34,7 +35,7 @@ class ChartManager:
         try:
             cfg = self._ensure_config(config)
 
-            if cfg.chart_type != "frequency" and not cfg.y_params:
+            if cfg.chart_type != "frequency" and not cfg.y_params and not cfg.secondary_y_params:
                 return None
 
             if cfg.chart_type == 'frequency':
@@ -44,7 +45,9 @@ class ChartManager:
                 return None
 
             valid_y = [p for p in cfg.y_params if p in df.columns]
-            if not valid_y:
+            valid_secondary_y = [p for p in cfg.secondary_y_params if p in df.columns]
+            
+            if not valid_y and not valid_secondary_y:
                 return None
 
             chosen_type = cfg.chart_type
@@ -76,55 +79,141 @@ class ChartManager:
                     else:
                         chosen_type = "scatter"  # fallback
 
-            palette = self.color_schemes.get(cfg.color_scheme, px.colors.sequential.Viridis)
-            fig = go.Figure()
+            # Determine if we need secondary Y-axis
+            has_secondary = len(valid_secondary_y) > 0
+            
+            if has_secondary:
+                # Create subplot with secondary Y-axis
+                fig = make_subplots(specs=[[{"secondary_y": True}]])
+            else:
+                # Regular single-axis figure
+                fig = go.Figure()
 
+            palette = self.color_schemes.get(cfg.color_scheme, px.colors.sequential.Viridis)
+            
+            # Helper function to get different line styles for secondary axis
+            def get_line_style(is_secondary: bool, base_color: str) -> Dict[str, Any]:
+                if is_secondary:
+                    return {"color": base_color, "dash": "dash"}
+                else:
+                    return {"color": base_color}
+            
+            # Helper function to disambiguate legend names
+            def get_legend_name(param: str, is_secondary: bool) -> str:
+                if has_secondary:
+                    axis_label = "(Right)" if is_secondary else "(Left)"
+                    return f"{param} {axis_label}"
+                return param
+
+            # Add primary Y-axis traces
             for idx, param in enumerate(valid_y):
                 color = palette[idx % len(palette)]
                 x_vals = df_plot[cfg.x_param]
                 y_vals = df_plot[param]
+                legend_name = get_legend_name(param, False)
 
                 if chosen_type == "line":
-                    fig.add_trace(go.Scatter(
+                    trace = go.Scatter(
                         x=x_vals, y=y_vals,
                         mode="lines",
-                        name=param,
-                        line=dict(color=color)
-                    ))
+                        name=legend_name,
+                        line=get_line_style(False, color)
+                    )
                 elif chosen_type == "scatter":
-                    fig.add_trace(go.Scatter(
+                    trace = go.Scatter(
                         x=x_vals, y=y_vals,
                         mode="markers",
-                        name=param,
+                        name=legend_name,
                         marker=dict(color=color, size=6)
-                    ))
+                    )
                 elif chosen_type == "bar":
-                    fig.add_trace(go.Bar(
+                    trace = go.Bar(
                         x=x_vals, y=y_vals,
-                        name=param,
+                        name=legend_name,
                         marker_color=color
-                    ))
+                    )
                 elif chosen_type == "area":
-                    fig.add_trace(go.Scatter(
+                    trace = go.Scatter(
                         x=x_vals, y=y_vals,
                         mode="lines",
-                        name=param,
-                        line=dict(color=color),
+                        name=legend_name,
+                        line=get_line_style(False, color),
                         fill="tozeroy"
-                    ))
+                    )
                 else:
-                    fig.add_trace(go.Scatter(
+                    trace = go.Scatter(
                         x=x_vals, y=y_vals,
                         mode="lines",
-                        name=param
-                    ))
+                        name=legend_name
+                    )
 
+                if has_secondary:
+                    fig.add_trace(trace, secondary_y=False)
+                else:
+                    fig.add_trace(trace)
+
+            # Add secondary Y-axis traces
+            for idx, param in enumerate(valid_secondary_y):
+                # Continue color sequence from where primary left off
+                color_idx = (len(valid_y) + idx) % len(palette)
+                color = palette[color_idx]
+                x_vals = df_plot[cfg.x_param]
+                y_vals = df_plot[param]
+                legend_name = get_legend_name(param, True)
+
+                if chosen_type == "line":
+                    trace = go.Scatter(
+                        x=x_vals, y=y_vals,
+                        mode="lines",
+                        name=legend_name,
+                        line=get_line_style(True, color)
+                    )
+                elif chosen_type == "scatter":
+                    trace = go.Scatter(
+                        x=x_vals, y=y_vals,
+                        mode="markers",
+                        name=legend_name,
+                        marker=dict(color=color, size=6, symbol="diamond")  # Different symbol for secondary
+                    )
+                elif chosen_type == "bar":
+                    trace = go.Bar(
+                        x=x_vals, y=y_vals,
+                        name=legend_name,
+                        marker_color=color,
+                        opacity=0.7  # Slightly transparent for secondary
+                    )
+                elif chosen_type == "area":
+                    trace = go.Scatter(
+                        x=x_vals, y=y_vals,
+                        mode="lines",
+                        name=legend_name,
+                        line=get_line_style(True, color),
+                        fill="tozeroy"
+                    )
+                else:
+                    trace = go.Scatter(
+                        x=x_vals, y=y_vals,
+                        mode="lines",
+                        name=legend_name,
+                        line=get_line_style(True, color)
+                    )
+
+                fig.add_trace(trace, secondary_y=True)
+
+            # Configure layout
             fig.update_layout(
                 title=cfg.title,
                 xaxis_title=cfg.x_param,
-                yaxis_title=cfg.y_axis_label,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
+
+            if has_secondary:
+                # Set Y-axes titles for dual-axis chart
+                fig.update_yaxes(title_text=cfg.y_axis_label, secondary_y=False)
+                fig.update_yaxes(title_text=cfg.secondary_y_axis_label, secondary_y=True)
+            else:
+                # Single axis chart
+                fig.update_layout(yaxis_title=cfg.y_axis_label)
 
             # Enforce readable axis formatting for Timestamp
             if cfg.x_param == "Timestamp":

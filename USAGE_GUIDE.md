@@ -72,6 +72,58 @@ Open your web browser and navigate to:
 - Use for: Showing parameter ranges, stacked comparisons
 - Features: Filled areas, transparency, stacking
 
+### Dual Y-Axis Charts
+
+The analyzer supports secondary Y-axis functionality for plotting parameters with different units or scales on the same chart.
+
+#### When to Use Secondary Y-Axis
+
+- **Different Units**: Temperature (°C) vs Pressure (Pa)
+- **Different Scales**: RPM (thousands) vs Torque (tens)
+- **Related Parameters**: Speed (m/s) vs Acceleration (m/s²)
+- **Comparative Analysis**: Input vs Output signals
+
+#### Configuring Secondary Y-Axis
+
+1. **Primary Parameters**: Select main parameters for the left Y-axis
+2. **Secondary Parameters**: Select parameters for the right Y-axis
+3. **Axis Labels**: 
+   - Primary Y-Axis Label: Label for left axis
+   - Secondary Y-Axis Label: Label for right axis
+
+#### Visual Differentiation
+
+The system automatically distinguishes between primary and secondary axis data:
+
+- **Line Style**: Primary axis uses solid lines, secondary axis uses dashed lines
+- **Legend Names**: Parameters are labeled with "(Left)" or "(Right)" indicators
+- **Marker Symbols**: For scatter plots, secondary axis uses diamond markers
+- **Color Management**: Intelligent color cycling prevents collisions
+
+#### Example Configuration
+
+```
+Chart Title: Engine Performance Analysis
+Chart Type: Line
+X-Axis: Elapsed Time (s)
+
+Primary Y Parameters: 
+- Engine Speed (RPM)
+- Fuel Flow (kg/h)
+
+Secondary Y Parameters:
+- Exhaust Temperature (°C)
+- Oil Pressure (Pa)
+
+Primary Y-Axis Label: Engine Operation
+Secondary Y-Axis Label: Engine Health
+```
+
+This configuration will create a chart with:
+- Left axis: Engine Speed and Fuel Flow (solid lines)
+- Right axis: Exhaust Temperature and Oil Pressure (dashed lines)
+- Clear legend: "Engine Speed (Left)", "Fuel Flow (Left)", "Exhaust Temperature (Right)", "Oil Pressure (Right)"
+
 ## Dashboard Layouts
 
 ### Available Layouts
@@ -188,6 +240,26 @@ Open your web browser and navigate to:
 - Group related parameters together
 - Limit to 3-4 parameters per chart for clarity
 - Use separate charts for different units/scales
+
+### Secondary Y-Axis Best Practices
+
+- **Use Sparingly**: Only when parameters are related but have different scales
+- **Clear Labeling**: Always provide descriptive axis labels with units
+- **Avoid Overload**: Maximum 2-3 parameters per axis to maintain readability
+- **Related Data**: Ensure primary and secondary parameters have logical relationships
+- **Color Awareness**: The system handles color conflicts, but preview your charts
+- **Documentation**: Include notes explaining the relationship between axes
+
+#### Good Secondary Y-Axis Examples:
+- Temperature vs Pressure (thermodynamic relationship)
+- Speed vs Acceleration (kinematic relationship)  
+- Input Command vs Actual Position (control system response)
+- RPM vs Torque (engine performance)
+
+#### Avoid Secondary Y-Axis When:
+- Parameters have similar scales (combine on primary axis)
+- No logical relationship exists between parameter groups
+- More than 6 total parameters (use multiple charts instead)
 
 ## Export Options
 
