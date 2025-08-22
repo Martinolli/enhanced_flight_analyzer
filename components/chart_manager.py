@@ -250,16 +250,23 @@ class ChartManager:
         try:
             cfg = self._ensure_config(config)
 
-            if cfg.chart_type != "frequency" and not cfg.y_params:
-                return None
-
+            # Frequency (FFT/PSD) charts handled separately
             if cfg.chart_type == 'frequency':
                 return self._create_frequency_plot(df, cfg)
 
+            # Must have y parameters for non-frequency charts
+            if not cfg.y_params:
+                return None
+
+            # X param must exist
             if cfg.x_param not in df.columns:
                 return None
 
-            # Create dual-axis chart if needed
+            # Analyze units / axis assignment
+            unit_analysis = self._analyze_parameter_units(cfg)
+            primary_params = unit_analysis['primary_params']
+            secondary_params = unit_analysis['secondary_params']
+
             if unit_analysis['needs_dual_axis'] and secondary_params:
                 return self._create_dual_axis_chart(df, cfg, unit_analysis, primary_params, secondary_params)
             else:
@@ -268,10 +275,6 @@ class ChartManager:
         except Exception as e:
             print(f"Error creating chart: {e}")
             return None
-
-        self._apply_timestamp_formatting(fig, cfg, df_plot)
-        
-        return fig
     
     def _create_dual_axis_chart(self, df: pd.DataFrame, cfg: ChartConfig,
                                unit_analysis: Dict[str, Any], primary_params: List[str], 
@@ -504,54 +507,39 @@ class ChartManager:
             else:
                 fig.update_xaxes(tickformat=",.3f", tickmode="auto")
 
-    def _create_trace(self, chart_type: str, x_vals, y_vals, param: str, color: str) -> go.Scatter:
-        """
-        Create a plotly trace based on chart type.
-        
-        Args:
-            chart_type: Type of chart (line, scatter, bar, area)
-            x_vals: X-axis values
-            y_vals: Y-axis values  
-            param: Parameter name for the trace
-            color: Color for the trace
-            
-        Returns:
-            Plotly trace object
-        """
-        if chart_type == "line":
-            return go.Scatter(
-                x=x_vals, y=y_vals,
-                mode="lines",
-                name=param,
-                line=dict(color=color)
-            )
-        elif chart_type == "scatter":
-            return go.Scatter(
-                x=x_vals, y=y_vals,
-                mode="markers",
-                name=param,
-                marker=dict(color=color, size=6)
-            )
-        elif chart_type == "bar":
-            return go.Bar(
-                x=x_vals, y=y_vals,
-                name=param,
-                marker_color=color
-            )
-        elif chart_type == "area":
-            return go.Scatter(
-                x=x_vals, y=y_vals,
-                mode="lines",
-                name=param,
-                line=dict(color=color),
-                fill="tozeroy"
-            )
-        else:
-            return go.Scatter(
-                x=x_vals, y=y_vals,
-                mode="lines",
-                name=param
-            )
+    def _create_single_axis_chart(self, df: pd.DataFrame, cfg: ChartConfig, unit_analysis: Dict[str, Any],
+                                  primary_params: List[str]) -> go.Figure:
+        """Create a single-axis chart (line/scatter/bar/area)."""
+        df_plot = self._prepare_dataframe(df, cfg)
+        chosen_type = self._determine_chart_type(df_plot, cfg)
+        fig = go.Figure()
+        palette = self.color_schemes.get(cfg.color_scheme, px.colors.sequential.Viridis)
+
+        for idx, param in enumerate(primary_params):
+            if param not in df_plot.columns:
+                continue
+            color = palette[idx % len(palette)]
+            x_vals = df_plot[cfg.x_param]
+            y_vals = df_plot[param]
+            legend_name = self._format_legend_name(param, cfg.show_units_in_legend, cfg.unit_annotation_style)
+            trace = self._create_trace(chosen_type, x_vals, y_vals, legend_name, color)
+            fig.add_trace(trace)
+
+        # Axis label formatting
+        primary_unit = unit_analysis['primary_unit']
+        y_label = cfg.y_axis_label or "Value"
+        if primary_unit:
+            y_label = self._format_axis_label(y_label, primary_unit, cfg.unit_annotation_style)
+
+        fig.update_layout(
+            title=cfg.title,
+            xaxis_title=cfg.x_param,
+            yaxis_title=y_label,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+
+        self._apply_timestamp_formatting(fig, cfg, df_plot)
+        return fig
 
     def _create_frequency_plot(self, df: pd.DataFrame, cfg: ChartConfig) -> Optional[go.Figure]:
         try:
