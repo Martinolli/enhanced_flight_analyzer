@@ -1,2 +1,6 @@
 .venv/
 deprecated_files/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
