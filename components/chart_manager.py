@@ -9,6 +9,7 @@ from scipy.fft import fft, fftfreq
 
 from .config_models import ChartConfig, migrate_chart_dict
 from .unit_utils import UnitDetector, detect_unit_mismatch
+from .unit_conversion import PhysicalUnitConverter
 
 
 class ChartManager:
@@ -25,6 +26,7 @@ class ChartManager:
             'purples': px.colors.sequential.Purples
         }
         self.unit_detector = UnitDetector()
+        self.unit_converter = PhysicalUnitConverter()
 
     def _ensure_config(self, config: Union[ChartConfig, Dict[str, Any]]) -> ChartConfig:
         return config if isinstance(config, ChartConfig) else migrate_chart_dict(config)
@@ -299,7 +301,26 @@ class ChartManager:
             palette = self.color_schemes.get(cfg.color_scheme, px.colors.sequential.Viridis)
 
             for idx, param in enumerate([p for p in cfg.y_params if p in df.columns]):
-                y = df[param].values.astype(float)
+                # NEW CODE - Enhanced with unit conversion
+                # Get unit information for this parameter
+                raw_unit = self.unit_detector.extract_unit_from_parameter(param)
+                normalized_unit = self.unit_detector.normalize_unit(raw_unit)
+                category = self.unit_detector.get_unit_category(raw_unit)
+
+                # Get original values
+                y_original = df[param].values.astype(float)
+
+                # Convert to SI units if needed for FFT
+                y_converted, si_unit = self.unit_converter.convert_to_si(
+                    y_original, normalized_unit, category
+                )
+
+                # Track conversion for display
+                conv_info = self.unit_converter.get_conversion_info(normalized_unit, category)
+
+                # Use converted values for FFT processing
+                y = y_converted
+
                 if cfg.freq_detrend:
                     # Use linear detrend only if length > 3 else mean removal
                     if len(y) > 3:
@@ -317,7 +338,10 @@ class ChartManager:
                     if nperseg < 8:
                         continue
                     f, Pxx = welch(y_proc, fs=fs, nperseg=nperseg, detrend=False, window=cfg.freq_window if cfg.freq_window != "rect" else "boxcar")
+                    display_unit = si_unit if conv_info['should_convert'] else (raw_unit or "")
                     trace_name = f"{param} PSD"
+                    if display_unit:
+                        trace_name += f" ({display_unit}²/Hz)"
                     fig.add_trace(go.Scatter(x=f, y=Pxx, mode="lines",
                                              name=trace_name,
                                              line=dict(color=palette[idx % len(palette)])))
@@ -354,6 +378,8 @@ class ChartManager:
                     if N % 2 == 0 and len(yf_abs) > 1:
                         yf_abs[-1] /= 2.0
                     trace_name = f"{param} FFT"
+                    if display_unit:
+                        trace_name += f" ({display_unit})"
                     fig.add_trace(go.Scatter(
                         x=xf,
                         y=yf_abs,
