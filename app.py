@@ -19,6 +19,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import uuid
+import plotly.graph_objects as go
+import plotly.express as px
 
 from components.chart_manager import ChartManager
 from components.data_processor import DataProcessor
@@ -27,6 +29,8 @@ from components.config_models import migrate_chart_dict, ChartConfig
 from components.export_html_zip import export_charts_as_html_zip
 from components.plotly_ui import download_config, sanitize_filename
 from components.export_manager import ExportManager
+from components.statistical_analysis import FlightDataStatistics
+from components.large_dataset_handler import LargeDatasetHandler
 
 st.set_page_config(
     page_title="Enhanced Flight Data Analyzer Pro",
@@ -65,6 +69,8 @@ if 'data' not in st.session_state:
     st.session_state.data = None
 if 'schema_version' not in st.session_state:
     st.session_state.schema_version = 3  # >>> UPDATED <<< bumped for new freq fields / dual axis UI
+if 'statistics' not in st.session_state:
+    st.session_state.statistics = FlightDataStatistics()
 
 chart_manager = ChartManager()
 data_processor = DataProcessor()
@@ -82,6 +88,403 @@ migrate_all_charts()
 @st.cache_data(show_spinner=False)
 def compute_corr(df_num: pd.DataFrame):
     return df_num.corr()
+
+def create_statistics_section():
+    """Create the statistical analysis section in the UI."""
+    st.subheader("📈 Statistical Analysis")
+    
+    if st.session_state.data is not None:
+        df = st.session_state.data
+        numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+        
+        # Parameter selection for analysis
+        selected_params = st.multiselect(
+            "Select parameters for statistical analysis:",
+            numeric_cols,
+            default=numeric_cols[:5] if len(numeric_cols) >= 5 else numeric_cols
+        )
+        
+        if selected_params:
+            analysis_type = st.selectbox(
+                "Analysis Type:",
+                ["Basic Statistics", "Correlation Analysis", "Outlier Detection", "Trend Analysis"]
+            )
+            
+            if st.button("Run Analysis"):
+                with st.spinner("Performing statistical analysis..."):
+                    stats_analyzer = st.session_state.statistics
+                    
+                    if analysis_type == "Basic Statistics":
+                        results = stats_analyzer.compute_basic_statistics(df, selected_params)
+                        display_basic_statistics(results)
+                        
+                    elif analysis_type == "Correlation Analysis":
+                        results = stats_analyzer.compute_correlation_analysis(df, selected_params)
+                        display_correlation_analysis(results)
+                        
+                    elif analysis_type == "Outlier Detection":
+                        method = st.selectbox("Detection Method:", ["iqr", "zscore", "modified_zscore"])
+                        results = stats_analyzer.detect_outliers(df, selected_params, method=method)
+                        display_outlier_analysis(results)
+                        
+                    elif analysis_type == "Trend Analysis":
+                        time_col = st.selectbox("Time Column:", ["Elapsed Time (s)", "Timestamp"])
+                        results = stats_analyzer.perform_trend_analysis(df, time_col, selected_params)
+                        display_trend_analysis(results)
+def display_correlation_analysis(results):
+    """Display correlation analysis results."""
+    st.subheader("🔗 Correlation Analysis Results")
+    
+    if 'error' in results:
+        st.error(f"❌ {results['error']}")
+        return
+    
+    # Display method and data info
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Method", results['method'].title())
+    with col2:
+        st.metric("Parameters", len(results['parameter_list']))
+    with col3:
+        st.metric("Data Points", results['data_points'])
+    
+    # Display strongest correlations
+    st.subheader("🏆 Strongest Correlations")
+    
+    if results['strongest_correlations']:
+        correlation_data = []
+        for corr in results['strongest_correlations'][:10]:  # Top 10
+            correlation_data.append({
+                'Parameter 1': corr['param1'],
+                'Parameter 2': corr['param2'],
+                'Correlation': f"{corr['correlation']:.4f}",
+                'Strength': _get_correlation_strength(abs(corr['correlation']))
+            })
+        
+        df_corr = pd.DataFrame(correlation_data)
+        st.dataframe(df_corr, use_container_width=True)
+        
+        # Create correlation heatmap
+        st.subheader("🔥 Correlation Heatmap")
+        
+        # Convert correlation matrix to DataFrame for plotting
+        corr_matrix = pd.DataFrame(results['correlation_matrix'])
+        
+        # Create heatmap
+        fig = px.imshow(
+            corr_matrix.values,
+            x=corr_matrix.columns,
+            y=corr_matrix.index,
+            color_continuous_scale='RdBu_r',
+            aspect='auto',
+            title=f"Correlation Matrix ({results['method'].title()})"
+        )
+        
+        fig.update_layout(
+            xaxis_title="Parameters",
+            yaxis_title="Parameters",
+            height=600
+        )
+        
+        # Add correlation values as text
+        for i in range(len(corr_matrix.index)):
+            for j in range(len(corr_matrix.columns)):
+                fig.add_annotation(
+                    x=j, y=i,
+                    text=f"{corr_matrix.iloc[i, j]:.2f}",
+                    showarrow=False,
+                    font=dict(color="white" if abs(corr_matrix.iloc[i, j]) > 0.5 else "black")
+                )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Interpretation
+        st.subheader("📊 Interpretation")
+        strong_correlations = [corr for corr in results['strongest_correlations'] if abs(corr['correlation']) > 0.7]
+        moderate_correlations = [corr for corr in results['strongest_correlations'] if 0.3 < abs(corr['correlation']) <= 0.7]
+        
+        if strong_correlations:
+            st.success(f"🔴 **Strong correlations found:** {len(strong_correlations)} parameter pairs with |r| > 0.7")
+            for corr in strong_correlations[:3]:  # Show top 3
+                st.write(f"• **{corr['param1']}** ↔ **{corr['param2']}**: r = {corr['correlation']:.3f}")
+        
+        if moderate_correlations:
+            st.info(f"🟡 **Moderate correlations:** {len(moderate_correlations)} parameter pairs with 0.3 < |r| ≤ 0.7")
+        
+        weak_correlations = len(results['strongest_correlations']) - len(strong_correlations) - len(moderate_correlations)
+        if weak_correlations > 0:
+            st.info(f"🟢 **Weak correlations:** {weak_correlations} parameter pairs with |r| ≤ 0.3")
+    
+    else:
+        st.warning("No correlations found.")
+
+def display_outlier_analysis(results):
+    """Display outlier analysis results."""
+    st.subheader("🎯 Outlier Detection Results")
+    
+    if not results:
+        st.warning("No outlier analysis results to display.")
+        return
+    
+    # Summary metrics
+    total_outliers = sum(info['outlier_count'] for info in results.values())
+    total_points = sum(len(results) * 1000 for _ in results.values())  # Approximate
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Outliers", total_outliers)
+    with col2:
+        st.metric("Parameters Analyzed", len(results))
+    with col3:
+        method = list(results.values())[0]['method'] if results else "Unknown"
+        st.metric("Detection Method", method.upper())
+    
+    # Detailed results for each parameter
+    st.subheader("📋 Parameter-wise Results")
+    
+    outlier_summary = []
+    for param, info in results.items():
+        outlier_summary.append({
+            'Parameter': param,
+            'Outliers Found': info['outlier_count'],
+            'Outlier %': f"{info['outlier_percentage']:.2f}%",
+            'Method': info['method'].upper(),
+            'Threshold': info['threshold']
+        })
+    
+    df_outliers = pd.DataFrame(outlier_summary)
+    st.dataframe(df_outliers, use_container_width=True)
+    
+    # Visualization of outliers
+    st.subheader("📊 Outlier Visualization")
+    
+    # Create subplot for each parameter with outliers
+    params_with_outliers = [param for param, info in results.items() if info['outlier_count'] > 0]
+    
+    if params_with_outliers:
+        selected_param = st.selectbox("Select parameter to visualize:", params_with_outliers)
+        
+        if selected_param and selected_param in results:
+            info = results[selected_param]
+            
+            # Create box plot showing outliers
+            fig = go.Figure()
+            
+            # We need the actual data to create the plot - this is a limitation
+            # In a real implementation, you'd pass the original data as well
+            st.info("💡 **Note:** For detailed outlier visualization, the original data would be needed. "
+                   "The outlier indices and values are available in the analysis results.")
+            
+            # Show outlier details
+            if info['outlier_values']:
+                st.subheader(f"🔍 Outlier Details for {selected_param}")
+                
+                outlier_details = pd.DataFrame({
+                    'Index': info['outlier_indices'],
+                    'Value': info['outlier_values']
+                })
+                
+                st.dataframe(outlier_details, use_container_width=True)
+                
+                # Show bounds if available
+                if info['bounds']['lower'] is not None and info['bounds']['upper'] is not None:
+                    st.write(f"**Detection Bounds:**")
+                    st.write(f"• Lower bound: {info['bounds']['lower']:.6f}")
+                    st.write(f"• Upper bound: {info['bounds']['upper']:.6f}")
+    
+    else:
+        st.success("🎉 No outliers detected in any of the analyzed parameters!")
+    
+    # Recommendations
+    st.subheader("💡 Recommendations")
+    
+    high_outlier_params = [param for param, info in results.items() if info['outlier_percentage'] > 5]
+    
+    if high_outlier_params:
+        st.warning(f"⚠️ **High outlier percentage detected** in: {', '.join(high_outlier_params)}")
+        st.write("Consider:")
+        st.write("• Investigating data collection issues")
+        st.write("• Checking sensor calibration")
+        st.write("• Reviewing flight test conditions")
+    else:
+        st.success("✅ **Data quality looks good** - low outlier percentages across all parameters")
+
+def display_trend_analysis(results):
+    """Display trend analysis results."""
+    st.subheader("📈 Trend Analysis Results")
+    
+    if 'error' in results:
+        st.error(f"❌ {results['error']}")
+        return
+    
+    if not results:
+        st.warning("No trend analysis results to display.")
+        return
+    
+    # Summary statistics
+    total_params = len(results)
+    increasing_trends = sum(1 for info in results.values() if info['linear_trend']['trend_direction'] == 'increasing')
+    decreasing_trends = sum(1 for info in results.values() if info['linear_trend']['trend_direction'] == 'decreasing')
+    stable_trends = total_params - increasing_trends - decreasing_trends
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Parameters Analyzed", total_params)
+    with col2:
+        st.metric("Increasing Trends", increasing_trends)
+    with col3:
+        st.metric("Decreasing Trends", decreasing_trends)
+    with col4:
+        st.metric("Stable Trends", stable_trends)
+    
+    # Detailed results
+    st.subheader("📊 Trend Details")
+    
+    trend_summary = []
+    for param, info in results.items():
+        trend = info['linear_trend']
+        trend_summary.append({
+            'Parameter': param,
+            'Trend Direction': trend['trend_direction'].title(),
+            'Slope': f"{trend['slope']:.6f}",
+            'R²': f"{trend['r_squared']:.4f}",
+            'P-value': f"{trend['p_value']:.6f}",
+            'Significance': "Significant" if trend['p_value'] < 0.05 else "Not Significant",
+            'Data Points': info['data_points'],
+            'Duration (s)': f"{info['time_range']['duration']:.1f}"
+        })
+    
+    df_trends = pd.DataFrame(trend_summary)
+    st.dataframe(df_trends, use_container_width=True)
+    
+    # Trend visualization
+    st.subheader("📉 Trend Visualization")
+    
+    # Select parameter for detailed view
+    param_options = list(results.keys())
+    selected_param = st.selectbox("Select parameter for detailed trend view:", param_options)
+    
+    if selected_param and selected_param in results:
+        info = results[selected_param]
+        trend = info['linear_trend']
+        
+        # Display trend information
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("Slope", f"{trend['slope']:.6f}")
+            st.metric("R² (Fit Quality)", f"{trend['r_squared']:.4f}")
+            st.metric("P-value", f"{trend['p_value']:.6f}")
+        
+        with col2:
+            direction_emoji = {"increasing": "📈", "decreasing": "📉", "stable": "➡️"}
+            st.metric("Trend Direction", 
+                     f"{direction_emoji.get(trend['trend_direction'], '❓')} {trend['trend_direction'].title()}")
+            
+            significance = "Significant" if trend['p_value'] < 0.05 else "Not Significant"
+            significance_emoji = "✅" if trend['p_value'] < 0.05 else "❌"
+            st.metric("Statistical Significance", f"{significance_emoji} {significance}")
+        
+        # Change points
+        if info['change_points']:
+            st.subheader("🔄 Change Points Detected")
+            change_points_df = pd.DataFrame({
+                'Change Point Time (s)': info['change_points']
+            })
+            st.dataframe(change_points_df, use_container_width=True)
+        else:
+            st.info("No significant change points detected in the trend.")
+        
+        # Trend interpretation
+        st.subheader("🧠 Interpretation")
+        
+        if trend['p_value'] < 0.05:
+            if trend['trend_direction'] == 'increasing':
+                st.success(f"📈 **Significant increasing trend** detected in {selected_param}")
+                st.write(f"• The parameter increases by {abs(trend['slope']):.6f} units per second")
+                st.write(f"• Trend explains {trend['r_squared']*100:.1f}% of the variance")
+            elif trend['trend_direction'] == 'decreasing':
+                st.warning(f"📉 **Significant decreasing trend** detected in {selected_param}")
+                st.write(f"• The parameter decreases by {abs(trend['slope']):.6f} units per second")
+                st.write(f"• Trend explains {trend['r_squared']*100:.1f}% of the variance")
+            else:
+                st.info(f"➡️ **Stable behavior** in {selected_param}")
+        else:
+            st.info(f"📊 **No significant trend** detected in {selected_param} (p > 0.05)")
+            st.write("The observed changes may be due to random variation rather than a systematic trend.")
+    
+    # Overall assessment
+    st.subheader("🎯 Overall Assessment")
+    
+    significant_trends = [param for param, info in results.items() 
+                         if info['linear_trend']['p_value'] < 0.05]
+    
+    if significant_trends:
+        st.warning(f"⚠️ **{len(significant_trends)} parameters show significant trends:**")
+        for param in significant_trends:
+            direction = results[param]['linear_trend']['trend_direction']
+            emoji = {"increasing": "📈", "decreasing": "📉", "stable": "➡️"}
+            st.write(f"• {emoji.get(direction, '❓')} **{param}**: {direction}")
+        
+        st.write("**Recommendations:**")
+        st.write("• Investigate causes of trending parameters")
+        st.write("• Consider if trends are expected or indicate issues")
+        st.write("• Monitor trending parameters closely in future flights")
+    else:
+        st.success("✅ **No significant trends detected** - parameters appear stable over time")
+
+def _get_correlation_strength(abs_correlation):
+    """Get correlation strength description."""
+    if abs_correlation >= 0.8:
+        return "Very Strong"
+    elif abs_correlation >= 0.6:
+        return "Strong"
+    elif abs_correlation >= 0.4:
+        return "Moderate"
+    elif abs_correlation >= 0.2:
+        return "Weak"
+    else:
+        return "Very Weak"
+
+def display_basic_statistics(results):
+    """Display basic statistics results."""
+    st.subheader("Basic Statistics Results")
+    
+    for param, stats in results.items():
+        st.write(f"**{param}**")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Mean", f"{stats['mean']:.4f}")
+            st.metric("Std Dev", f"{stats['std']:.4f}")
+        with col2:
+            st.metric("Min", f"{stats['min']:.4f}")
+            st.metric("Max", f"{stats['max']:.4f}")
+        with col3:
+            st.metric("Median", f"{stats['median']:.4f}")
+            st.metric("IQR", f"{stats['iqr']:.4f}")
+        with col4:
+            st.metric("Skewness", f"{stats['skewness']:.4f}")
+            st.metric("Kurtosis", f"{stats['kurtosis']:.4f}")
+        
+        st.divider()
+
+def optimize_memory_usage():
+    """Optimize memory usage of loaded data."""
+    if st.session_state.data is not None:
+        original_memory = st.session_state.data.memory_usage(deep=True).sum() / (1024 * 1024)
+        
+        handler = LargeDatasetHandler()
+        optimized_df = handler.optimize_dataframe_memory(st.session_state.data)
+        
+        new_memory = optimized_df.memory_usage(deep=True).sum() / (1024 * 1024)
+        memory_saved = original_memory - new_memory
+        
+        if memory_saved > 0:
+            st.session_state.data = optimized_df
+            st.success(f"✅ Memory optimized! Saved {memory_saved:.1f} MB ({memory_saved/original_memory*100:.1f}%)")
+        else:
+            st.info("ℹ️ Data is already optimally stored")
 
 def show_chart(fig, title_base: str | None = None, key: str | None = None, height: int | None = None):
     if fig is None:
@@ -419,6 +822,13 @@ if st.session_state.data is not None:
                 })
         if rows:
             st.dataframe(pd.DataFrame(rows))
+
+    if st.session_state.data is not None:
+        create_statistics_section()
+
+    if st.session_state.data is not None:
+        if st.sidebar.button("🔧 Optimize Memory"):
+            optimize_memory_usage()
 
 else:
     st.info("📁 Please upload a flight data file to begin analysis")
