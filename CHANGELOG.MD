@@ -14,6 +14,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/) and Seman
 ## [2.2.1] - 2025-01-15
 
 ### Added
+
 - **Export-safe styling** with professional formatting for high-DPI and vector outputs
 - **Multi-format image export** (PNG, SVG, PDF, JPEG) with configurable scaling
 - **Vector format support** (SVG, PDF) for presentations and publications
@@ -22,12 +23,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/) and Seman
 - Export-optimized chart styling with consistent fonts, colors, and layouts
 
 ### Changed
+
 - Updated export workflow to apply format-specific styling optimizations
 - Enhanced HTML dashboard with professional CSS Grid layout and print media queries
 - Improved chart default styling for better export compatibility
 - Enhanced documentation with comprehensive export workflow guidance
 
 ### Fixed
+
 - Export compatibility across different output formats and display densities
 - Professional appearance consistency in exported materials
 
