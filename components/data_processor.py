@@ -1,9 +1,12 @@
+import os
 import pandas as pd
 import numpy as np
 import streamlit as st
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import io
+
+from .large_dataset_handler import LargeDatasetHandler
 
 class DataProcessor:
     """
@@ -13,8 +16,9 @@ class DataProcessor:
     def __init__(self):
         self.supported_formats = ['.csv', '.txt']
         self.required_columns = ['Timestamp', 'Elapsed Time (s)']
-    
-    def load_data(self, file) -> pd.DataFrame:
+        self.large_dataset_handler = LargeDatasetHandler()
+
+    def _load_standard_method(self, file) -> pd.DataFrame:
         """
         Enhanced data loading with proper parsing and validation.
         
@@ -62,6 +66,84 @@ class DataProcessor:
             st.error(f"Error loading data: {e}")
             return pd.DataFrame()
     
+    def load_data(self, file):
+        """Enhanced data loading with large dataset support."""
+        try:
+            # Save uploaded file temporarily
+            temp_path = f"/tmp/{file.name}"
+            with open(temp_path, "wb") as f:
+                f.write(file.getbuffer())
+            
+            # Check if large dataset handling is needed
+            memory_info = self.large_dataset_handler.estimate_memory_usage(temp_path)
+            
+            if memory_info.get('requires_chunking', False):
+                st.info(f"Large dataset detected ({memory_info['estimated_memory_mb']:.1f} MB). Using optimized loading...")
+                
+                # Create progress bar
+                progress_bar = st.progress(0)
+                progress_text = st.empty()
+                
+                def progress_callback(processed_rows):
+                    progress = min(processed_rows / memory_info['total_rows'], 1.0)
+                    progress_bar.progress(progress)
+                    progress_text.text(f"Processed {processed_rows:,} / {memory_info['total_rows']:,} rows")
+                
+                # Load with chunking or sampling
+                df = self.large_dataset_handler.load_data_chunked(temp_path, progress_callback)
+                
+                progress_bar.empty()
+                progress_text.empty()
+                
+                # Show dataset summary
+                summary = self.large_dataset_handler.create_data_summary(df)
+                self._display_dataset_summary(summary)
+                
+            else:
+                # Use standard loading for smaller files
+                df = self._load_standard_method(file)
+            
+            # Clean up temp file
+            os.unlink(temp_path)
+            
+            return df
+            
+        except Exception as e:
+            st.error(f"Error loading data: {e}")
+            return pd.DataFrame()
+
+    def _display_dataset_summary(self, summary):
+        """Display dataset summary in the UI."""
+        st.subheader("📊 Dataset Summary")
+        
+        basic_info = summary['basic_info']
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Rows", f"{basic_info['rows']:,}")
+        with col2:
+            st.metric("Columns", basic_info['columns'])
+        with col3:
+            st.metric("Memory Usage", f"{basic_info['memory_usage_mb']:.1f} MB")
+        with col4:
+            if basic_info['time_range']:
+                st.metric("Duration", f"{basic_info['time_range']['duration']:.1f} s")
+        
+        # Show sampling info if applicable
+        if basic_info.get('sampling_info'):
+            sampling = basic_info['sampling_info']
+            st.info(f"📊 Data sampled: {sampling['sampled_rows']:,} rows from {sampling['original_rows']:,} "
+                   f"({sampling['sample_rate']*100:.1f}% sample rate)")
+        
+        # Data quality indicators
+        quality = summary['data_quality']
+        if quality['duplicate_rows'] > 0:
+            st.warning(f"⚠️ Found {quality['duplicate_rows']} duplicate rows")
+        
+        if quality['constant_columns']:
+            st.warning(f"⚠️ Constant columns detected: {', '.join(quality['constant_columns'])}")
+
+
     def _create_column_names(self, header1: List[str], header2: List[str]) -> List[str]:
         """
         Create proper column names from header rows.
