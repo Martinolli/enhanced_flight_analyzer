@@ -301,28 +301,27 @@ class ChartManager:
             palette = self.color_schemes.get(cfg.color_scheme, px.colors.sequential.Viridis)
 
             for idx, param in enumerate([p for p in cfg.y_params if p in df.columns]):
-                # NEW CODE - Enhanced with unit conversion
-                # Get unit information for this parameter
+                # Unit extraction
                 raw_unit = self.unit_detector.extract_unit_from_parameter(param)
                 normalized_unit = self.unit_detector.normalize_unit(raw_unit)
                 category = self.unit_detector.get_unit_category(raw_unit)
 
-                # Get original values
                 y_original = df[param].values.astype(float)
 
-                # Convert to SI units if needed for FFT
                 y_converted, si_unit = self.unit_converter.convert_to_si(
                     y_original, normalized_unit, category
                 )
-
-                # Track conversion for display
                 conv_info = self.unit_converter.get_conversion_info(normalized_unit, category)
 
-                # Use converted values for FFT processing
+                # Compute display unit once (fix for unbound variable)
+                if conv_info['should_convert']:
+                    display_unit = si_unit
+                else:
+                    display_unit = raw_unit or ""
+
                 y = y_converted
 
                 if cfg.freq_detrend:
-                    # Use linear detrend only if length > 3 else mean removal
                     if len(y) > 3:
                         y_proc = scipy_detrend(y, type='linear')
                     else:
@@ -333,20 +332,28 @@ class ChartManager:
                 N = len(y_proc)
 
                 if cfg.freq_type == "psd":
-                    # Welch PSD
                     nperseg = min(256, N)
                     if nperseg < 8:
                         continue
-                    f, Pxx = welch(y_proc, fs=fs, nperseg=nperseg, detrend=False, window=cfg.freq_window if cfg.freq_window != "rect" else "boxcar")
-                    display_unit = si_unit if conv_info['should_convert'] else (raw_unit or "")
+                    f, Pxx = welch(
+                        y_proc,
+                        fs=fs,
+                        nperseg=nperseg,
+                        detrend=False,
+                        window=cfg.freq_window if cfg.freq_window != "rect" else "boxcar"
+                    )
                     trace_name = f"{param} PSD"
                     if display_unit:
                         trace_name += f" ({display_unit}²/Hz)"
-                    fig.add_trace(go.Scatter(x=f, y=Pxx, mode="lines",
-                                             name=trace_name,
-                                             line=dict(color=palette[idx % len(palette)])))
+                    fig.add_trace(go.Scatter(
+                        x=f,
+                        y=Pxx,
+                        mode="lines",
+                        name=trace_name,
+                        line=dict(color=palette[idx % len(palette)])
+                    ))
                     if cfg.freq_peak_annotation and len(Pxx) > 1:
-                        peak_idx = int(np.argmax(Pxx[1:])) + 1  # ignore DC for peak
+                        peak_idx = int(np.argmax(Pxx[1:])) + 1
                         fig.add_annotation(
                             x=float(f[peak_idx]),
                             y=float(Pxx[peak_idx]),
@@ -357,8 +364,6 @@ class ChartManager:
                             font=dict(size=10)
                         )
                 else:
-                    # FFT amplitude spectrum
-                    # Window
                     if cfg.freq_window != "rect":
                         try:
                             win = get_window(cfg.freq_window, N)
@@ -367,14 +372,12 @@ class ChartManager:
                     else:
                         win = np.ones(N)
                     y_w = y_proc * win
-                    # Amplitude correction (preserve RMS energy)
                     win_correction = np.sum(win) / N
                     yf = fft(y_w)
                     xf = fftfreq(N, avg_dt)
                     pos_mask = xf >= 0
                     xf = xf[pos_mask]
                     yf_abs = (2.0 / (N * win_correction)) * np.abs(yf[pos_mask])
-                    # Avoid doubling DC & Nyquist properly
                     if N % 2 == 0 and len(yf_abs) > 1:
                         yf_abs[-1] /= 2.0
                     trace_name = f"{param} FFT"
@@ -388,7 +391,6 @@ class ChartManager:
                         line=dict(color=palette[idx % len(palette)])
                     ))
                     if cfg.freq_peak_annotation and len(yf_abs) > 2:
-                        # ignore DC
                         peak_idx = np.argmax(yf_abs[1:]) + 1
                         fig.add_annotation(
                             x=float(xf[peak_idx]),
@@ -417,5 +419,6 @@ class ChartManager:
                 fig.update_yaxes(type="log")
             return fig
         except Exception as e:
+            # Consider using logging instead of print for production
             print(f"Error creating frequency chart: {e}")
             return None
