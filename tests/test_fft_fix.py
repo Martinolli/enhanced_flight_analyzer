@@ -4,6 +4,10 @@ import numpy as np
 from components.chart_manager import ChartManager
 from components.config_models import ChartConfig
 
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 def test_fft_unit_conversion():
     """Test the FFT unit conversion fix."""
     
@@ -27,6 +31,7 @@ def test_fft_unit_conversion():
     
     # Generate plot
     fig = chart_manager.create_chart(df, cfg)
+    print("Generated FFT plot")
     
     # Verify the fix
     if fig:
