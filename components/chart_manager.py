@@ -10,6 +10,7 @@ from scipy.fft import fft, fftfreq
 from .config_models import ChartConfig, migrate_chart_dict
 from .unit_utils import UnitDetector, detect_unit_mismatch
 from .unit_conversion import PhysicalUnitConverter
+from components.vibration_utils import apply_highpass, compute_band_rms, detect_psd_peaks
 
 
 class ChartManager:
@@ -275,149 +276,248 @@ class ChartManager:
 
     def _create_frequency_plot(self, df: pd.DataFrame, cfg: ChartConfig) -> Optional[go.Figure]:
         try:
-            time_col = "Elapsed Time (s)" if "Elapsed Time (s)" in df.columns else (
-                "Timestamp" if "Timestamp" in df.columns else cfg.x_param
-            )
-            if time_col not in df.columns:
-                return None
-            if not cfg.y_params:
-                return None
+            if cfg.chart_type == "frequency":
+                fig = go.Figure()
+                palette = self.color_schemes.get(cfg.color_scheme, px.colors.sequential.Viridis)
 
-            t = df[time_col]
-            if t.isna().any() or len(t) < cfg.freq_min_points:
-                return None
-            t_vals = t.values.astype(float)
-            diffs = np.diff(t_vals)
-            if len(diffs) == 0:
-                return None
-            avg_dt = np.mean(diffs)
-            if avg_dt <= 0:
-                return None
-            fs = 1.0 / avg_dt
-            irregular_ratio = np.std(diffs) / avg_dt if avg_dt > 0 else 0.0
-            irregular_flag = irregular_ratio > cfg.freq_irregular_tol
-
-            fig = go.Figure()
-            palette = self.color_schemes.get(cfg.color_scheme, px.colors.sequential.Viridis)
-
-            for idx, param in enumerate([p for p in cfg.y_params if p in df.columns]):
-                # Unit extraction
-                raw_unit = self.unit_detector.extract_unit_from_parameter(param)
-                normalized_unit = self.unit_detector.normalize_unit(raw_unit)
-                category = self.unit_detector.get_unit_category(raw_unit)
-
-                y_original = df[param].values.astype(float)
-
-                y_converted, si_unit = self.unit_converter.convert_to_si(
-                    y_original, normalized_unit, category
+                # Determine sampling
+                time_col = "Elapsed Time (s)" if "Elapsed Time (s)" in df.columns else (
+                    "Timestamp" if "Timestamp" in df.columns else cfg.x_param
                 )
-                conv_info = self.unit_converter.get_conversion_info(normalized_unit, category)
+                if time_col not in df.columns:
+                    return None
 
-                # Compute display unit once (fix for unbound variable)
-                if conv_info['should_convert']:
-                    display_unit = si_unit
-                else:
-                    display_unit = raw_unit or ""
+                t_series = df[time_col]
+                if t_series.isna().any() or len(t_series) < cfg.freq_min_points:
+                    return None
 
-                y = y_converted
+                t_vals = t_series.values.astype(float)
+                diffs = np.diff(t_vals)
+                if len(diffs) == 0:
+                    return None
+                avg_dt = np.mean(diffs)
+                if avg_dt <= 0:
+                    return None
+                fs_computed = 1.0 / avg_dt
+                fs = float(cfg.override_sample_rate) if (cfg.override_sample_rate and cfg.override_sample_rate > 0) else fs_computed
 
-                if cfg.freq_detrend:
-                    if len(y) > 3:
-                        y_proc = scipy_detrend(y, type='linear')
-                    else:
-                        y_proc = y - np.mean(y)
-                else:
-                    y_proc = y
+                irregular_ratio = np.std(diffs) / avg_dt if avg_dt > 0 else 0.0
+                irregular_flag = irregular_ratio > cfg.freq_irregular_tol
 
-                N = len(y_proc)
+                # Prepare subtitle diagnostics (updated later with Δf)
+                subtitle_parts = [f"fs={fs:.2f} Hz", f"N={len(t_vals)}"]
+                if cfg.override_sample_rate and cfg.override_sample_rate > 0:
+                    subtitle_parts.append("fs_override")
+                if irregular_flag:
+                    subtitle_parts.append(f"Irregular (CV={irregular_ratio:.2%})")
 
-                if cfg.freq_type == "psd":
-                    nperseg = min(256, N)
-                    if nperseg < 8:
+                nyquist = fs / 2.0
+
+                # Track if user restricts frequency display
+                max_f = cfg.max_frequency if cfg.max_frequency and cfg.max_frequency > 0 else None
+                if max_f and max_f > nyquist:
+                    max_f = nyquist
+
+                # RMS band accumulation (only meaningful for PSD)
+                band_defs = []
+                for pair in cfg.band_rms:
+                    try:
+                        lo, hi = float(pair[0]), float(pair[1])
+                        if hi > lo > 0:
+                            band_defs.append((lo, hi))
+                    except Exception:
                         continue
-                    f, Pxx = welch(
-                        y_proc,
-                        fs=fs,
-                        nperseg=nperseg,
-                        detrend=False,
-                        window=cfg.freq_window if cfg.freq_window != "rect" else "boxcar"
+
+                peak_annotations_done = False
+
+                for idx, param in enumerate([p for p in cfg.y_params if p in df.columns]):
+                    raw_unit = self.unit_detector.extract_unit_from_parameter(param)
+                    normalized_unit = self.unit_detector.normalize_unit(raw_unit)
+                    category = self.unit_detector.get_unit_category(raw_unit)
+                    y_original = df[param].values.astype(float)
+
+                    # Unit conversion (re‑use existing utilities)
+                    y_converted, si_unit = self.unit_converter.convert_to_si(
+                        y_original, normalized_unit, category
                     )
-                    trace_name = f"{param} PSD"
-                    if display_unit:
-                        trace_name += f" ({display_unit}²/Hz)"
-                    fig.add_trace(go.Scatter(
-                        x=f,
-                        y=Pxx,
-                        mode="lines",
-                        name=trace_name,
-                        line=dict(color=palette[idx % len(palette)])
-                    ))
-                    if cfg.freq_peak_annotation and len(Pxx) > 1:
-                        peak_idx = int(np.argmax(Pxx[1:])) + 1
-                        fig.add_annotation(
-                            x=float(f[peak_idx]),
-                            y=float(Pxx[peak_idx]),
-                            text=f"Peak {f[peak_idx]:.2f} Hz",
-                            showarrow=True,
-                            arrowhead=2,
-                            yshift=10,
-                            font=dict(size=10)
-                        )
-                else:
-                    if cfg.freq_window != "rect":
-                        try:
-                            win = get_window(cfg.freq_window, N)
-                        except Exception:
-                            win = np.hanning(N)
-                    else:
-                        win = np.ones(N)
-                    y_w = y_proc * win
-                    win_correction = np.sum(win) / N
-                    yf = fft(y_w)
-                    xf = fftfreq(N, avg_dt)
-                    pos_mask = xf >= 0
-                    xf = xf[pos_mask]
-                    yf_abs = (2.0 / (N * win_correction)) * np.abs(yf[pos_mask])
-                    if N % 2 == 0 and len(yf_abs) > 1:
-                        yf_abs[-1] /= 2.0
-                    trace_name = f"{param} FFT"
-                    if display_unit:
-                        trace_name += f" ({display_unit})"
-                    fig.add_trace(go.Scatter(
-                        x=xf,
-                        y=yf_abs,
-                        mode="lines",
-                        name=trace_name,
-                        line=dict(color=palette[idx % len(palette)])
-                    ))
-                    if cfg.freq_peak_annotation and len(yf_abs) > 2:
-                        peak_idx = np.argmax(yf_abs[1:]) + 1
-                        fig.add_annotation(
-                            x=float(xf[peak_idx]),
-                            y=float(yf_abs[peak_idx]),
-                            text=f"Peak {xf[peak_idx]:.2f} Hz",
-                            showarrow=True,
-                            arrowhead=2,
-                            yshift=10,
-                            font=dict(size=10)
+                    conv_info = self.unit_converter.get_conversion_info(normalized_unit, category)
+                    display_unit = si_unit if conv_info['should_convert'] else (raw_unit or "")
+
+                    y = y_converted
+
+                    # Detrend (existing)
+                    if cfg.freq_detrend:
+                        if len(y) > 3:
+                            y = scipy_detrend(y, type='linear')
+                        else:
+                            y = y - np.mean(y)
+
+                    # High-pass (new)
+                    y = apply_highpass(y, fs, cfg.highpass_cutoff)
+
+                    N = len(y)
+                    if N < cfg.freq_min_points:
+                        continue
+
+                    # PSD (Welch) path
+                    if cfg.freq_type == "psd":
+                        # Adjust nperseg if too large / small
+                        nperseg = min(cfg.welch_nperseg, N)
+                        if nperseg < 8:
+                            continue
+                        noverlap = int(min(max(0.0, cfg.welch_overlap), 0.95) * nperseg)
+                        if noverlap >= nperseg:
+                            noverlap = nperseg // 2
+
+                        # Use SciPy Welch
+                        f_freqs, Pxx = welch(
+                            y,
+                            fs=fs,
+                            nperseg=nperseg,
+                            noverlap=noverlap,
+                            detrend=False,
+                            window=cfg.freq_window if cfg.freq_window != "rect" else "boxcar"
                         )
 
-            base_title = cfg.title or "Frequency Analysis"
-            subtitle_parts = [f"fs={fs:.2f} Hz", f"N={len(t_vals)}"]
-            if irregular_flag:
-                subtitle_parts.append(f"Irregular sampling (CV={irregular_ratio:.2%})")
-            fig.update_layout(
-                title=f"{base_title}<br><sub>{' • '.join(subtitle_parts)}</sub>",
-                xaxis_title="Frequency (Hz)",
-                yaxis_title="PSD" if cfg.freq_type == "psd" else "Amplitude",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                font=dict(family="Arial, sans-serif", size=12, color="black"),
-                plot_bgcolor="white",
-                paper_bgcolor="white"
-            )
-            if cfg.freq_log_scale:
-                fig.update_yaxes(type="log")
-            return fig
+                        # Restrict frequency range
+                        if max_f:
+                            mask = f_freqs <= max_f
+                            f_plot = f_freqs[mask]
+                            Pxx_plot = Pxx[mask]
+                        else:
+                            f_plot, Pxx_plot = f_freqs, Pxx
+
+                        trace_name = f"{param} PSD"
+                        if display_unit:
+                            trace_name += f" ({display_unit}²/Hz)"
+                        fig.add_trace(go.Scatter(
+                            x=f_plot,
+                            y=Pxx_plot,
+                            mode="lines",
+                            name=trace_name,
+                            line=dict(color=palette[idx % len(palette)])
+                        ))
+
+                        # Peak detection (optional annotation)
+                        if cfg.freq_peak_annotation and not peak_annotations_done and len(Pxx_plot) > 3:
+                            peaks = detect_psd_peaks(f_plot, Pxx_plot, prominence=0.0, max_peaks=1)
+                            if peaks:
+                                pk = peaks[0]
+                                fig.add_annotation(
+                                    x=pk["frequency"],
+                                    y=pk["value"],
+                                    text=f"Peak {pk['frequency']:.2f} Hz",
+                                    showarrow=True,
+                                    arrowhead=2,
+                                    font=dict(size=10),
+                                    yshift=10
+                                )
+                            peak_annotations_done = True
+
+                        # Band RMS (only PSD)
+                        band_results = compute_band_rms(f_freqs, Pxx, band_defs) if band_defs else []
+
+                    else:
+                        # FFT amplitude spectrum
+                        if cfg.freq_window != "rect":
+                            try:
+                                win = get_window(cfg.freq_window, N)
+                            except Exception:
+                                win = np.hanning(N)
+                        else:
+                            win = np.ones(N)
+                        y_w = y * win
+                        win_correction = np.sum(win) / N
+                        yf = fft(y_w)
+                        xf = fftfreq(N, 1.0 / fs)
+
+                        # Positive freqs
+                        pos_mask = xf >= 0
+                        xf = xf[pos_mask]
+                        yf_abs = (2.0 / (N * win_correction)) * np.abs(yf[pos_mask])
+                        if N % 2 == 0 and len(yf_abs) > 1:
+                            yf_abs[-1] /= 2.0
+
+                        if max_f:
+                            mask = xf <= max_f
+                            xf_plot = xf[mask]
+                            yf_plot = yf_abs[mask]
+                        else:
+                            xf_plot, yf_plot = xf, yf_abs
+
+                        trace_name = f"{param} FFT"
+                        if display_unit:
+                            trace_name += f" ({display_unit})"
+                        fig.add_trace(go.Scatter(
+                            x=xf_plot,
+                            y=yf_plot,
+                            mode="lines",
+                            name=trace_name,
+                            line=dict(color=palette[idx % len(palette)])
+                        ))
+
+                        if cfg.freq_peak_annotation and len(yf_plot) > 2 and not peak_annotations_done:
+                            peak_idx = np.argmax(yf_plot[1:]) + 1
+                            fig.add_annotation(
+                                x=float(xf_plot[peak_idx]),
+                                y=float(yf_plot[peak_idx]),
+                                text=f"Peak {xf_plot[peak_idx]:.2f} Hz",
+                                showarrow=True,
+                                arrowhead=2,
+                                yshift=10,
+                                font=dict(size=10)
+                            )
+                            peak_annotations_done = True
+
+                        band_results = []  # Not using band RMS for FFT amplitude (PSD is correct domain)
+
+                    # After first trace, we can finalize Δf
+                    if idx == 0:
+                        if cfg.freq_type == "psd":
+                            if len(f_freqs) > 1:
+                                delta_f = f_freqs[1] - f_freqs[0]
+                            else:
+                                delta_f = fs / N
+                        else:
+                            delta_f = fs / N
+                        subtitle_parts.append(f"Nyq={nyquist:.1f} Hz")
+                        subtitle_parts.append(f"Δf={delta_f:.3f} Hz")
+                        if cfg.freq_type == "psd":
+                            subtitle_parts.append(f"nperseg={nperseg}")
+                            subtitle_parts.append(f"overlap={noverlap}")
+                        if cfg.highpass_cutoff:
+                            subtitle_parts.append(f"HP>{cfg.highpass_cutoff:.1f}Hz")
+                        if max_f:
+                            subtitle_parts.append(f"f≤{max_f:.0f}Hz")
+
+                    # Add band RMS table as figure annotations (top-right stacking)
+                    if band_results:
+                        yref = 1.0
+                        xref = 1.0
+                        offset = 0
+                        for bres in band_results:
+                            fig.add_annotation(
+                                xref="paper", yref="paper",
+                                x=1.0, y=1.0 - (0.05 * offset),
+                                showarrow=False,
+                                align="right",
+                                text=f"{param} {bres.band}: RMS={bres.rms:.4g}",
+                                font=dict(size=10, color=palette[idx % len(palette)])
+                            )
+                            offset += 1
+
+                base_title = cfg.title or "Frequency Analysis"
+                fig.update_layout(
+                    title=f"{base_title}<br><sub>{' • '.join(subtitle_parts)}</sub>",
+                    xaxis_title="Frequency (Hz)",
+                    yaxis_title="PSD" if cfg.freq_type == "psd" else "Amplitude",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                )
+
+                if cfg.freq_log_scale:
+                    fig.update_yaxes(type="log", exponentformat="power")
+
+                return fig
         except Exception as e:
             # Consider using logging instead of print for production
             print(f"Error creating frequency chart: {e}")
