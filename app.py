@@ -68,7 +68,7 @@ if 'layout_config' not in st.session_state:
 if 'data' not in st.session_state:
     st.session_state.data = None
 if 'schema_version' not in st.session_state:
-    st.session_state.schema_version = 3  # >>> UPDATED <<< bumped for new freq fields / dual axis UI
+    st.session_state.schema_version = 4  # bumped for advanced frequency enhancements
 if 'statistics' not in st.session_state:
     st.session_state.statistics = FlightDataStatistics()
 
@@ -580,20 +580,65 @@ with st.sidebar:
                     with colf1:
                         freq_detrend = st.checkbox("Detrend", value=cfg_obj.freq_detrend, key=f"fdetr_{chart_id}")
                         freq_log = st.checkbox("Log Scale Y", value=cfg_obj.freq_log_scale, key=f"flog_{chart_id}")
+                        override_fs = st.number_input("Override fs (Hz)", min_value=0.0,
+                                                      value=float(cfg_obj.override_sample_rate or 0.0),
+                                                      help="Set >0 to ignore computed fs.", key=f"ofs_{chart_id}")
                     with colf2:
                         freq_window = st.selectbox("Window", ['hann', 'hamming', 'blackman', 'rect'],
                                                    index=['hann', 'hamming', 'blackman', 'rect'].index(cfg_obj.freq_window),
                                                    key=f"fwin_{chart_id}")
                         freq_peak = st.checkbox("Annotate Peak", value=cfg_obj.freq_peak_annotation, key=f"fpeak_{chart_id}")
+                        max_freq = st.number_input("Max Freq (Hz)", min_value=0.0,
+                                                   value=float(cfg_obj.max_frequency or 0.0),
+                                                   help="0 = full Nyquist", key=f"fmax_{chart_id}")
                     with colf3:
                         freq_min_points = st.number_input("Min Points", min_value=4, max_value=2048,
                                                           value=cfg_obj.freq_min_points, key=f"fminp_{chart_id}")
                         freq_irregular_tol = st.number_input("Irregular Tol (CV)", min_value=0.0, max_value=0.5,
                                                              value=float(cfg_obj.freq_irregular_tol), step=0.01,
                                                              key=f"firtol_{chart_id}")
+                        highpass_cut = st.number_input("High-pass (Hz)", min_value=0.0,
+                                                       value=float(cfg_obj.highpass_cutoff or 0.0),
+                                                       help="0 = none", key=f"fhp_{chart_id}")
+
+                    # Welch / PSD parameters (shown regardless; applied only if PSD)
+                    colw1, colw2 = st.columns(2)
+                    with colw1:
+                        welch_nperseg = st.number_input("Welch nperseg", min_value=32, max_value=65536,
+                                                        value=int(cfg_obj.welch_nperseg), step=32,
+                                                        help="Power of two recommended (e.g. 1024, 2048).",
+                                                        key=f"wnps_{chart_id}")
+                    with colw2:
+                        welch_overlap = st.slider("Overlap %", 0, 90, int(cfg_obj.welch_overlap * 100),
+                                                  help="Percentage overlap between segments", key=f"wov_{chart_id}") / 100.0
+
+                    band_rms_str = st.text_input("Band RMS (e.g. 0-20;20-50;50-120)",
+                                                 value=";".join(
+                                                     f"{b[0]}-{b[1]}" for b in cfg_obj.band_rms
+                                                 ),
+                                                 help="Integrate PSD in each band; only PSD mode.",
+                                                 key=f"brms_{chart_id}")
+                    parsed_bands = []
+                    if band_rms_str.strip():
+                        for token in band_rms_str.split(";"):
+                            token = token.strip()
+                            if not token:
+                                continue
+                            if "-" in token:
+                                try:
+                                    lo_s, hi_s = token.split("-", 1)
+                                    lo_v = float(lo_s)
+                                    hi_v = float(hi_s)
+                                    if hi_v > lo_v > 0:
+                                        parsed_bands.append([lo_v, hi_v])
+                                except Exception:
+                                    pass
+
                     if x_param not in ("Elapsed Time (s)", "Timestamp"):
                         st.info("Frequency charts derive sampling from time columns regardless of selected X.")
+
                 else:
+                    # (existing non-frequency branch unchanged)
                     freq_type = cfg_obj.freq_type
                     freq_detrend = cfg_obj.freq_detrend
                     freq_window = cfg_obj.freq_window
@@ -601,6 +646,12 @@ with st.sidebar:
                     freq_peak = cfg_obj.freq_peak_annotation
                     freq_min_points = cfg_obj.freq_min_points
                     freq_irregular_tol = cfg_obj.freq_irregular_tol
+                    override_fs = cfg_obj.override_sample_rate or 0.0
+                    max_freq = cfg_obj.max_frequency or 0.0
+                    highpass_cut = cfg_obj.highpass_cutoff or 0.0
+                    welch_nperseg = cfg_obj.welch_nperseg
+                    welch_overlap = cfg_obj.welch_overlap
+                    parsed_bands = cfg_obj.band_rms
 
                 y_options = [c for c in numeric_cols if (chart_type == 'frequency' or c != x_param)]
                 y_default = [p for p in cfg_obj.y_params if p in y_options]
@@ -715,7 +766,13 @@ with st.sidebar:
                     freq_log_scale=freq_log,
                     freq_peak_annotation=freq_peak,
                     freq_min_points=freq_min_points,
-                    freq_irregular_tol=freq_irregular_tol
+                    freq_irregular_tol=freq_irregular_tol,
+                    override_sample_rate=override_fs or None,
+                    max_frequency=max_freq or None,
+                    welch_nperseg=welch_nperseg,
+                    welch_overlap=welch_overlap,
+                    highpass_cutoff=highpass_cut or None,
+                    band_rms=parsed_bands
                 )
                 st.session_state.charts[chart_id] = updated.as_dict()
 
