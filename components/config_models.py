@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Dict, Any
 
+CURRENT_SCHEMA_VERSION = 4 #  bumped
 
 @dataclass
 class ChartConfig:
@@ -35,10 +36,18 @@ class ChartConfig:
     freq_window: str = "hann"           # hann | hamming | blackman | rect
     freq_log_scale: bool = False        # Log scale for Y (magnitude / PSD)
     freq_peak_annotation: bool = True   # Annotate dominant peak
-    freq_min_points: int = 8            # Minimum points required
+    freq_min_points: int = 16           # Minimum points required
     freq_irregular_tol: float = 0.05    # Relative std dev tolerance for sampling irregularity warning
 
-    def to_legacy_dict(self) -> Dict[str, Any]:
+    # >>> NEW FIELDS <<<
+    override_sample_rate: Optional[float] = None  # Hz
+    max_frequency: Optional[float] = None         # Hz limit for plotting
+    welch_nperseg: int = 2048
+    welch_overlap: float = 0.5                    # 0..0.95
+    highpass_cutoff: Optional[float] = None       # Hz
+    band_rms: List[List[float]] = field(default_factory=list)  # [[lo, hi], ...]
+
+    def as_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
             "title": self.title,
@@ -68,47 +77,63 @@ class ChartConfig:
             "freq_log_scale": self.freq_log_scale,
             "freq_peak_annotation": self.freq_peak_annotation,
             "freq_min_points": self.freq_min_points,
-            "freq_irregular_tol": self.freq_irregular_tol
+            "freq_irregular_tol": self.freq_irregular_tol,
+            "override_sample_rate": self.override_sample_rate,
+            "max_frequency": self.max_frequency,
+            "welch_nperseg": self.welch_nperseg,
+            "welch_overlap": self.welch_overlap,
+            "highpass_cutoff": self.highpass_cutoff,
+            "band_rms": self.band_rms,
+            "schema_version": CURRENT_SCHEMA_VERSION
         }
+        
+def migrate_chart_dict(d: Dict[str, Any]) -> ChartConfig:
+    """
+     Extend existing migration logic to fill defaults for new frequency fields.
+    """
+    # Existing migrations...
+    if "override_sample_rate" not in d:
+        d["override_sample_rate"] = None
+    if "max_frequency" not in d:
+        d["max_frequency"] = None
+    if "welch_nperseg" not in d:
+        d["welch_nperseg"] = 2048
+    if "welch_overlap" not in d:
+        d["welch_overlap"] = 0.5
+    if "highpass_cutoff" not in d:
+        d["highpass_cutoff"] = None
+    if "band_rms" not in d:
+        d["band_rms"] = []
 
-    def as_dict(self) -> Dict[str, Any]:
-        base = asdict(self)
-        base.update({
-            "type": self.chart_type,
-            "parameters": list(self.y_params),
-            "x_axis": self.x_param,
-        })
-        return base
-
-
-def migrate_chart_dict(old: Dict[str, Any]) -> ChartConfig:
-    if isinstance(old, ChartConfig):
-        return old
     return ChartConfig(
-        id=old.get("id", old.get("chart_id", "chart")),
-        title=old.get("title", "Chart"),
-        chart_type=old.get("chart_type", old.get("type", "line")),
-        x_param=old.get("x_param", old.get("x_axis", "Elapsed Time (s)")),
-        y_params=old.get("y_params", old.get("parameters", [])) or [],
-        secondary_y_params=old.get("secondary_y_params", []),
-        y_axis_label=old.get("y_axis_label", "Value"),
-        secondary_y_axis_label=old.get("secondary_y_axis_label", ""),
-        color_scheme=old.get("color_scheme", "viridis"),
-        freq_type=old.get("freq_type", "fft"),
-        transformations=old.get("transformations", []),
-        notes=old.get("notes"),
-        sort_x=old.get("sort_x", False),
-        auto_detect_units=old.get("auto_detect_units", True),
-        force_unit_detection=old.get("force_unit_detection", False),
-        manual_y_unit=old.get("manual_y_unit"),
-        manual_secondary_y_unit=old.get("manual_secondary_y_unit"),
-        synchronize_scales=old.get("synchronize_scales", False),
-        show_units_in_legend=old.get("show_units_in_legend", True),
-        unit_annotation_style=old.get("unit_annotation_style", "parentheses"),
-        freq_detrend=old.get("freq_detrend", True),
-        freq_window=old.get("freq_window", "hann"),
-        freq_log_scale=old.get("freq_log_scale", False),
-        freq_peak_annotation=old.get("freq_peak_annotation", True),
-        freq_min_points=old.get("freq_min_points", 8),
-        freq_irregular_tol=old.get("freq_irregular_tol", 0.05)
+        id=d["id"],
+        title=d.get("title", "Chart"),
+        chart_type=d.get("chart_type", "line"),
+        x_param=d.get("x_param"),
+        y_params=d.get("y_params", []),
+        secondary_y_params=d.get("secondary_y_params", []),
+        y_axis_label=d.get("y_axis_label", ""),
+        secondary_y_axis_label=d.get("secondary_y_axis_label"),
+        color_scheme=d.get("color_scheme", "viridis"),
+        freq_type=d.get("freq_type", "fft"),
+        sort_x=d.get("sort_x", False),
+        auto_detect_units=d.get("auto_detect_units", True),
+        force_unit_detection=d.get("force_unit_detection", False),
+        synchronize_scales=d.get("synchronize_scales", False),
+        show_units_in_legend=d.get("show_units_in_legend", True),
+        unit_annotation_style=d.get("unit_annotation_style", "parentheses"),
+        manual_y_unit=d.get("manual_y_unit"),
+        manual_secondary_y_unit=d.get("manual_secondary_y_unit"),
+        freq_detrend=d.get("freq_detrend", True),
+        freq_window=d.get("freq_window", "hann"),
+        freq_log_scale=d.get("freq_log_scale", False),
+        freq_peak_annotation=d.get("freq_peak_annotation", True),
+        freq_min_points=d.get("freq_min_points", 16),
+        freq_irregular_tol=d.get("freq_irregular_tol", 0.05),
+        override_sample_rate=d.get("override_sample_rate"),
+        max_frequency=d.get("max_frequency"),
+        welch_nperseg=d.get("welch_nperseg", 2048),
+        welch_overlap=d.get("welch_overlap", 0.5),
+        highpass_cutoff=d.get("highpass_cutoff"),
+        band_rms=d.get("band_rms", []),
     )
