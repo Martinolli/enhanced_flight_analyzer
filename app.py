@@ -893,6 +893,6 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style='text-align:center;color:#666;padding:20px;'>
-Enhanced Flight Data Analyzer Pro v2.3.0-dev
+Enhanced Flight Data Analyzer Pro v2.4.0-dev
 </div>
 """, unsafe_allow_html=True)
