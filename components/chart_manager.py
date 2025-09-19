@@ -242,11 +242,41 @@ class ChartManager:
             fig.update_yaxes(range=[rmin, rmax], secondary_y=True)
 
     def _apply_timestamp_formatting(self, fig, cfg: ChartConfig, df_plot: pd.DataFrame):
-        if cfg.x_param == "Timestamp":
+        # Configure x-axis formatting and optional interactions (range slider / selector)
+        show_slider = bool(getattr(cfg, "show_x_range_slider", False))
+        is_timestamp = (cfg.x_param == "Timestamp")
+        # If we have a Timestamp column, prefer date formatting when dtype is datetime
+        if is_timestamp:
             if pd.api.types.is_datetime64_any_dtype(df_plot[cfg.x_param]):
-                fig.update_xaxes(type="date", tickformat="%H:%M:%S.%L")
+                fig.update_xaxes(
+                    type="date",
+                    tickformat="%H:%M:%S.%L",
+                    rangeslider=dict(visible=show_slider)
+                )
+                # Provide handy preset zoom buttons when using date axis
+                if show_slider:
+                    fig.update_xaxes(rangeselector=dict(
+                        buttons=[
+                            dict(count=10, label="10s", step="second", stepmode="backward"),
+                            dict(count=30, label="30s", step="second", stepmode="backward"),
+                            dict(count=1, label="1m", step="minute", stepmode="backward"),
+                            dict(count=5, label="5m", step="minute", stepmode="backward"),
+                            dict(step="all", label="All")
+                        ]
+                    ))
             else:
-                fig.update_xaxes(tickformat=",.3f", tickmode="auto")
+                fig.update_xaxes(
+                    tickformat=",.3f",
+                    tickmode="auto",
+                    rangeslider=dict(visible=show_slider)
+                )
+        else:
+            # Non-Timestamp x-axis (e.g., Elapsed Time (s) or other numeric)
+            fig.update_xaxes(
+                tickformat=",.3f" if pd.api.types.is_numeric_dtype(df_plot[cfg.x_param]) else None,
+                tickmode="auto",
+                rangeslider=dict(visible=show_slider)
+            )
 
     def _create_single_axis_chart(self, df: pd.DataFrame, cfg: ChartConfig,
                                   unit_analysis: Dict[str, Any], primary_params: List[str]) -> go.Figure:
@@ -513,6 +543,10 @@ class ChartManager:
                     yaxis_title="PSD" if cfg.freq_type == "psd" else "Amplitude",
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 )
+
+                # Optional range slider on frequency axis as well
+                if getattr(cfg, "show_x_range_slider", False):
+                    fig.update_xaxes(rangeslider=dict(visible=True))
 
                 if cfg.freq_log_scale:
                     fig.update_yaxes(type="log", exponentformat="power")

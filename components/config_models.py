@@ -22,6 +22,9 @@ class ChartConfig:
     notes: Optional[str] = None
     sort_x: bool = False
 
+    # X-axis UX
+    show_x_range_slider: bool = False   # Enable Plotly rangeslider on the x-axis
+
     # Unit detection / dual axis
     auto_detect_units: bool = True
     force_unit_detection: bool = False
@@ -65,6 +68,7 @@ class ChartConfig:
             "transformations": list(self.transformations),
             "notes": self.notes,
             "sort_x": self.sort_x,
+            "show_x_range_slider": self.show_x_range_slider,
             "auto_detect_units": self.auto_detect_units,
             "force_unit_detection": self.force_unit_detection,
             "manual_y_unit": self.manual_y_unit,
@@ -104,6 +108,9 @@ def migrate_chart_dict(d: Dict[str, Any]) -> ChartConfig:
         d["highpass_cutoff"] = None
     if "band_rms" not in d:
         d["band_rms"] = []
+    # New optional UI flags
+    if "show_x_range_slider" not in d:
+        d["show_x_range_slider"] = False
 
     return ChartConfig(
         id=d["id"],
@@ -117,6 +124,7 @@ def migrate_chart_dict(d: Dict[str, Any]) -> ChartConfig:
         color_scheme=d.get("color_scheme", "viridis"),
         freq_type=d.get("freq_type", "fft"),
         sort_x=d.get("sort_x", False),
+    show_x_range_slider=d.get("show_x_range_slider", False),
         auto_detect_units=d.get("auto_detect_units", True),
         force_unit_detection=d.get("force_unit_detection", False),
         synchronize_scales=d.get("synchronize_scales", False),
