@@ -181,7 +181,6 @@ class ChartManager:
         )
         fig.update_yaxes(title_text=primary_label, secondary_y=False)
         fig.update_yaxes(title_text=secondary_label, secondary_y=True)
-        fig.update_xaxes(rangeslider_visible=True, row=subplot, col=1)
         if (cfg.synchronize_scales and primary_unit and secondary_unit and
                 self.unit_detector.are_units_compatible(primary_unit, secondary_unit)):
             self._synchronize_y_axes(fig, df_plot, primary_params, secondary_params)
