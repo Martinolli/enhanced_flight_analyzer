@@ -248,22 +248,7 @@ class ChartManager:
         # If we have a Timestamp column, prefer date formatting when dtype is datetime
         if is_timestamp:
             if pd.api.types.is_datetime64_any_dtype(df_plot[cfg.x_param]):
-                fig.update_xaxes(
-                    type="date",
-                    tickformat="%H:%M:%S.%L",
-                    rangeslider=dict(visible=show_slider)
-                )
-                # Provide handy preset zoom buttons when using date axis
-                if show_slider:
-                    fig.update_xaxes(rangeselector=dict(
-                        buttons=[
-                            dict(count=10, label="10s", step="second", stepmode="backward"),
-                            dict(count=30, label="30s", step="second", stepmode="backward"),
-                            dict(count=1, label="1m", step="minute", stepmode="backward"),
-                            dict(count=5, label="5m", step="minute", stepmode="backward"),
-                            dict(step="all", label="All")
-                        ]
-                    ))
+                fig.update_xaxes(type="date", tickformat="%H:%M:%S.%L")
             else:
                 fig.update_xaxes(
                     tickformat=",.3f",
