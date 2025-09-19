@@ -244,7 +244,7 @@ class ChartManager:
     def _apply_timestamp_formatting(self, fig, cfg: ChartConfig, df_plot: pd.DataFrame):
         if cfg.x_param == "Timestamp":
             if pd.api.types.is_datetime64_any_dtype(df_plot[cfg.x_param]):
-                fig.update_xaxes(type="date", tickformat="%H:%M:%S.%L")
+                fig.update_xaxes(type="date", tickformat="%H:%M:%S")
             else:
                 fig.update_xaxes(tickformat=",.3f", tickmode="auto")
 
