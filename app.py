@@ -503,6 +503,10 @@ def show_chart(fig, title_base: str | None = None, key: str | None = None, heigh
         except Exception:
             pass
     try:
+        fig.update_xaxes(rangeslider_visible=True)
+    except Exception:
+        pass
+    try:
         cfg = download_config(safe_title)
     except Exception:
         cfg = {"responsive": True, "displaylogo": False}
@@ -841,6 +845,7 @@ if st.session_state.data is not None:
             import plotly.express as px
             fig_corr = px.imshow(corr, title="Parameter Correlation Matrix",
                                  color_continuous_scale='RdBu_r', aspect='auto')
+            fig_corr.update_xaxes(rangeslider_visible=True)
             st.plotly_chart(fig_corr, use_container_width=True)
         else:
             st.info("Need at least 2 numeric parameters (excluding time) for correlation.")

@@ -200,7 +200,7 @@ class LayoutManager:
     
     def _create_vertical_layout(self, charts: List[Dict[str, Any]], chart_manager, df) -> None:
         """Create vertical stack layout."""
-        for i, chart_config in enumerate(charts[:4]):  # Limit to 4 charts
+        for i, chart_config in enumerate(charts[:6]):  # Limit to 6 charts
             fig = chart_manager.create_chart(df, chart_config)
             if fig:
                 st.plotly_chart(fig, use_container_width=True, key=f"vert_{i}_{chart_config['id']}")
