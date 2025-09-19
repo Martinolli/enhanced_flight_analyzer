@@ -23,7 +23,7 @@ class ChartConfig:
     sort_x: bool = False
 
     # X-axis UX
-    show_x_range_slider: bool = False   # Enable Plotly rangeslider on the x-axis
+    show_x_range_slider: bool = True    # Enable Plotly rangeslider on the x-axis
 
     # Unit detection / dual axis
     auto_detect_units: bool = True

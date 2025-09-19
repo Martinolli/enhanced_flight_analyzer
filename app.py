@@ -804,6 +804,48 @@ with st.sidebar:
         if st.button("Export Charts as HTML Zip"):
             blob = export_charts_as_html_zip(st.session_state.charts, df, chart_manager)
             st.download_button("Download HTML Zip", data=blob, file_name="charts_html.zip")
+        
+        st.subheader("📊 Generate Report")
+        st.markdown("Generate a comprehensive analysis report with parameter limit compliance and statistical analysis.")
+        
+        # Flight information inputs (optional)
+        with st.expander("✈️ Flight Information (Optional)", expanded=False):
+            flight_id = st.text_input("Flight ID", placeholder="e.g., FL001-2024")
+            aircraft = st.text_input("Aircraft", placeholder="e.g., Boeing 737-800")
+            flight_date = st.date_input("Flight Date")
+            pilot = st.text_input("Pilot", placeholder="e.g., John Doe")
+        
+        if st.button("🔍 Generate Parameter Limit Analysis Report", use_container_width=True):
+            with st.spinner("Generating comprehensive flight analysis report..."):
+                try:
+                    from components.report_generator import FlightReportGenerator
+                    
+                    # Prepare flight info
+                    flight_info = {
+                        'flight_id': flight_id if flight_id else 'N/A',
+                        'aircraft': aircraft if aircraft else 'N/A',
+                        'date': flight_date.strftime('%Y-%m-%d') if flight_date else 'N/A',
+                        'pilot': pilot if pilot else 'N/A'
+                    }
+                    
+                    # Generate report
+                    report_generator = FlightReportGenerator()
+                    html_report = report_generator.generate_comprehensive_report(df, flight_info)
+                    
+                    # Offer download
+                    st.download_button(
+                        "📥 Download Analysis Report",
+                        data=html_report,
+                        file_name=f"flight_analysis_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
+                    
+                    st.success("✅ Report generated successfully! Click the download button above.")
+                    
+                except Exception as e:
+                    st.error(f"❌ Error generating report: {str(e)}")
+                    st.error("Please ensure all required components are properly installed.")
     else:
         st.info("📁 Upload a flight data file to begin.")
 
@@ -811,7 +853,12 @@ if st.session_state.data is not None:
     df = st.session_state.data
     non_param = {'Timestamp', 'Elapsed Time (s)'}
     param_count = sum(1 for c in df.columns if c not in non_param)
-    duration_min = (df['Elapsed Time (s)'].max() / 60) if 'Elapsed Time (s)' in df.columns else 0
+    # Fix duration calculation - use the actual elapsed time range, not just max value
+    if 'Elapsed Time (s)' in df.columns:
+        elapsed_time = df['Elapsed Time (s)']
+        duration_min = (elapsed_time.max() - elapsed_time.min()) / 60
+    else:
+        duration_min = 0
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -846,6 +893,11 @@ if st.session_state.data is not None:
             fig_corr = px.imshow(corr, title="Parameter Correlation Matrix",
                                  color_continuous_scale='RdBu_r', aspect='auto')
             fig_corr.update_xaxes(rangeslider_visible=True)
+            # Add gridlines to correlation chart
+            fig_corr.update_layout(
+                xaxis=dict(showgrid=True, gridwidth=1, gridcolor='lightgray'),
+                yaxis=dict(showgrid=True, gridwidth=1, gridcolor='lightgray')
+            )
             st.plotly_chart(fig_corr, use_container_width=True)
         else:
             st.info("Need at least 2 numeric parameters (excluding time) for correlation.")

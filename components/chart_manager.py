@@ -245,22 +245,43 @@ class ChartManager:
         # Configure x-axis formatting and optional interactions (range slider / selector)
         show_slider = bool(getattr(cfg, "show_x_range_slider", False))
         is_timestamp = (cfg.x_param == "Timestamp")
+        
+        # Add gridlines to all charts
+        fig.update_layout(
+            xaxis=dict(showgrid=True, gridwidth=1, gridcolor='lightgray'),
+            yaxis=dict(showgrid=True, gridwidth=1, gridcolor='lightgray')
+        )
+        
         # If we have a Timestamp column, prefer date formatting when dtype is datetime
         if is_timestamp:
             if pd.api.types.is_datetime64_any_dtype(df_plot[cfg.x_param]):
-                fig.update_xaxes(type="date", tickformat="%H:%M:%S.%L")
+                # Updated format to show HH:MM:SS without milliseconds
+                fig.update_xaxes(
+                    type="date", 
+                    tickformat="%H:%M:%S",
+                    rangeslider=dict(visible=show_slider),
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='lightgray'
+                )
             else:
                 fig.update_xaxes(
                     tickformat=",.3f",
                     tickmode="auto",
-                    rangeslider=dict(visible=show_slider)
+                    rangeslider=dict(visible=show_slider),
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='lightgray'
                 )
         else:
             # Non-Timestamp x-axis (e.g., Elapsed Time (s) or other numeric)
             fig.update_xaxes(
                 tickformat=",.3f" if pd.api.types.is_numeric_dtype(df_plot[cfg.x_param]) else None,
                 tickmode="auto",
-                rangeslider=dict(visible=show_slider)
+                rangeslider=dict(visible=show_slider),
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='lightgray'
             )
 
     def _create_single_axis_chart(self, df: pd.DataFrame, cfg: ChartConfig,
