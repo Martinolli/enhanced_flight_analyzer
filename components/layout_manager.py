@@ -1,3 +1,19 @@
+# Copyright (c) 2025 Martinolli
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+Layout Manager for Dashboard and Chart Arrangements
+Manages different layout templates and chart arrangements for the dashboard.
+"""
+# Import required libraries
 import streamlit as st
 import json
 from typing import Dict, List, Any, Tuple, Optional
@@ -50,6 +66,10 @@ class LayoutManager:
     def get_layout_templates(self) -> Dict[str, Dict[str, Any]]:
         """
         Get available layout templates.
+        Arguments:
+            None
+        Returns:
+            Dictionary of layout templates
         """
         return self.layout_templates
     
@@ -63,6 +83,8 @@ class LayoutManager:
             charts: List of chart configurations
             chart_manager: ChartManager instance
             df: DataFrame containing the data
+        Returns:
+            None
         """
         if not charts:
             st.info("No charts to display. Add charts using the sidebar.")
@@ -84,7 +106,14 @@ class LayoutManager:
             self._create_2x2_layout(charts, chart_manager, df)  # Default
     
     def _create_single_layout(self, charts: List[Dict[str, Any]], chart_manager, df) -> None:
-        """Create single chart layout."""
+        """Create single chart layout.
+        Arguments:
+            charts: List of chart configurations
+            chart_manager: ChartManager instance
+            df: DataFrame containing the data
+        Returns:
+            None
+        """
         if len(charts) > 0:
             chart_config = charts[0]
             fig = chart_manager.create_chart(df, chart_config)
@@ -92,7 +121,14 @@ class LayoutManager:
                 st.plotly_chart(fig, use_container_width=True, key=f"single_{chart_config['id']}")
     
     def _create_side_by_side_layout(self, charts: List[Dict[str, Any]], chart_manager, df) -> None:
-        """Create side-by-side layout."""
+        """Create side-by-side layout.
+        Arguments:
+            charts: List of chart configurations
+            chart_manager: ChartManager instance
+            df: DataFrame containing the data
+        Returns:
+            None
+        """
         col1, col2 = st.columns(2)
         
         with col1:
@@ -108,7 +144,14 @@ class LayoutManager:
                     st.plotly_chart(fig2, use_container_width=True, key=f"side2_{charts[1]['id']}")
     
     def _create_2x2_layout(self, charts: List[Dict[str, Any]], chart_manager, df) -> None:
-        """Create 2x2 grid layout."""
+        """Create 2x2 grid layout.
+        Arguments:
+            charts: List of chart configurations
+            chart_manager: ChartManager instance
+            df: DataFrame containing the data
+        Returns:
+            None      
+        """
         # First row
         col1, col2 = st.columns(2)
         with col1:
@@ -138,7 +181,15 @@ class LayoutManager:
                     st.plotly_chart(fig, use_container_width=True, key=f"grid4_{charts[3]['id']}")
     
     def _create_3x2_layout(self, charts: List[Dict[str, Any]], chart_manager, df) -> None:
-        """Create 3x2 grid layout."""
+        """Create 3x2 grid layout.
+        Arguments:
+            charts: List of chart configurations
+            chart_manager: ChartManager instance
+            df: DataFrame containing the data
+        Returns:
+            None
+        
+        """
         # First row
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -180,7 +231,14 @@ class LayoutManager:
                     st.plotly_chart(fig, use_container_width=True, key=f"3x2_6_{charts[5]['id']}")
     
     def _create_2x3_layout(self, charts: List[Dict[str, Any]], chart_manager, df) -> None:
-        """Create 2x3 grid layout."""
+        """Create 2x3 grid layout.
+        Arguments:
+            charts: List of chart configurations
+            chart_manager: ChartManager instance
+            df: DataFrame containing the data
+        Returns:
+            None
+        """
         for row in range(3):
             col1, col2 = st.columns(2)
             
@@ -199,7 +257,15 @@ class LayoutManager:
                         st.plotly_chart(fig, use_container_width=True, key=f"2x3_{chart_idx}_{charts[chart_idx]['id']}")
     
     def _create_vertical_layout(self, charts: List[Dict[str, Any]], chart_manager, df) -> None:
-        """Create vertical stack layout."""
+        """Create vertical stack layout.
+        Arguments:
+            charts: List of chart configurations
+            chart_manager: ChartManager instance
+            df: DataFrame containing the data
+        Returns:
+            None
+        
+        """
         for i, chart_config in enumerate(charts[:6]):  # Limit to 6 charts
             fig = chart_manager.create_chart(df, chart_config)
             if fig:
@@ -227,7 +293,12 @@ class LayoutManager:
         return templates.get(template_name, [])
     
     def _create_control_surfaces_template(self, df) -> List[Dict[str, Any]]:
-        """Create template for control surfaces analysis."""
+        """Create template for control surfaces analysis.
+        Arguments:
+            df: DataFrame containing the flight data
+        Returns:
+            List of chart configurations for control surfaces analysis        
+        """
         charts = []
         
         # Find control surface parameters
@@ -288,7 +359,13 @@ class LayoutManager:
         return charts
     
     def _create_flight_angles_template(self, df) -> List[Dict[str, Any]]:
-        """Create template for flight angles analysis."""
+        """Create template for flight angles analysis.
+        Arguments:
+            df: DataFrame containing the flight data
+        Returns:
+            List of chart configurations for flight angles analysis
+        
+        """
         charts = []
         
         # Find angle parameters
@@ -323,7 +400,12 @@ class LayoutManager:
         return charts
     
     def _create_forces_template(self, df) -> List[Dict[str, Any]]:
-        """Create template for forces analysis."""
+        """Create template for forces analysis.
+        Arguments:
+            df: DataFrame containing the flight data
+        Returns:
+            List of chart configurations for forces analysis
+        """
         charts = []
         
         # Find force parameters
@@ -375,7 +457,12 @@ class LayoutManager:
         return charts
     
     def _create_comprehensive_template(self, df) -> List[Dict[str, Any]]:
-        """Create comprehensive analysis template."""
+        """Create comprehensive analysis template.
+        Arguments:
+            df: DataFrame containing the flight data
+        Returns:    
+            List of chart configurations for comprehensive analysis
+        """
         charts = []
         chart_id = 0
         
