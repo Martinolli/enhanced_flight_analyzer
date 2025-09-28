@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 import uuid
 import plotly.graph_objects as go
 import plotly.express as px
+import math
 
 from components.chart_manager import ChartManager
 from components.data_processor import DataProcessor
@@ -88,6 +89,20 @@ migrate_all_charts()
 @st.cache_data(show_spinner=False)
 def compute_corr(df_num: pd.DataFrame):
     return df_num.corr()
+
+def _format_seconds_as_dhhmmss(seconds: float) -> str:
+    """Format seconds as DDD:HH:MM:SS.mmm (days zero-padded to 3)."""
+    if seconds is None or (isinstance(seconds, float) and math.isnan(seconds)):
+        return ""
+    millis_total = int(round(seconds * 1000))
+    days, rem_ms = divmod(millis_total, 24 * 60 * 60 * 1000)
+    hours, rem_ms = divmod(rem_ms, 60 * 60 * 1000)
+    minutes, rem_ms = divmod(rem_ms, 60 * 1000)
+    secs, millis = divmod(rem_ms, 1000)
+    if millis > 0:
+        return f"{days:03d}:{hours:02d}:{minutes:02d}:{secs:02d}.{millis:03d}"
+    return f"{days:03d}:{hours:02d}:{minutes:02d}:{secs:02d}"
+
 
 def create_statistics_section():
     """Create the statistical analysis section in the UI."""
@@ -586,21 +601,45 @@ with st.sidebar:
                     if x_dt.notna().any():
                         dt_min = x_dt.min()
                         dt_max = x_dt.max()
+
                         # Defaults from config or dataset bounds
                         cfg_start_dt = pd.to_datetime(ts_filter_start, errors="coerce") if ts_filter_start else dt_min
                         cfg_end_dt = pd.to_datetime(ts_filter_end, errors="coerce") if ts_filter_end else dt_max
 
+                        # Compute elapsed seconds relative to start (for user-friendly slider)
+                        elapsed_s = (x_dt - dt_min).dt.total_seconds()
+                        s_min = float(elapsed_s.min())
+                        s_max = float(elapsed_s.max())
+
+                        cfg_start_s = float((cfg_start_dt - dt_min).total_seconds())
+                        cfg_end_s = float((cfg_end_dt - dt_min).total_seconds())
+
+                        # Choose a sensible step from median sampling; fallback to 0.1 s
+                        if 'Elapsed Time (s)' in df.columns and df['Elapsed Time (s)'].notna().sum() > 1:
+                            step_guess = float(df['Elapsed Time (s)'].diff().dropna().median())
+                        else:
+                            step_guess = float(elapsed_s.diff().dropna().median()) if elapsed_s.notna().sum() > 1 else 0.1
+                        step_guess = step_guess if step_guess and step_guess > 0 else 0.1
+
                         enable_x_filter = st.checkbox("Limit time range", value=enable_x_filter, key=f"xfilter_en_{chart_id}")
                         if enable_x_filter:
-                            # Slider with datetime range
-                            start_dt, end_dt = st.slider(
-                                "Timeframe",
-                                min_value=dt_min.to_pydatetime(),
-                                max_value=dt_max.to_pydatetime(),
-                                value=(cfg_start_dt.to_pydatetime(), cfg_end_dt.to_pydatetime()),
-                                step=timedelta(minutes=1),
-                                key=f"xfilter_ts_{chart_id}"
+                            start_s, end_s = st.slider(
+                                "Timeframe (Elapsed seconds)",
+                                min_value=s_min,
+                                max_value=s_max,
+                                value=(cfg_start_s, cfg_end_s),
+                                step=step_guess,
+                                format="%.3f s",
+                                key=f"xfilter_sec_{chart_id}",
                             )
+                            
+                            # Show DDD:HH:MM:SS.mmm for clarity
+                            st.caption(f"Selected: {_format_seconds_as_dhhmmss(start_s)} → {_format_seconds_as_dhhmmss(end_s)}")
+
+                            # Convert back to concrete datetimes for downstream filtering/plotting
+                            start_dt = (dt_min + pd.to_timedelta(start_s, unit="s")).to_pydatetime()
+                            end_dt = (dt_min + pd.to_timedelta(end_s, unit="s")).to_pydatetime()
+                        
                             ts_filter_start = start_dt.isoformat()
                             ts_filter_end = end_dt.isoformat()
                         else:
@@ -610,6 +649,8 @@ with st.sidebar:
                         enable_x_filter = False
                         ts_filter_start, ts_filter_end = None, None
                         st.info("Timestamp column is not parseable; timeframe filter disabled.")
+                        pass
+
                 else:
                     # Numeric X axis (Elapsed Time (s) or other numeric)
                     x_num = pd.to_numeric(x_series, errors="coerce")
