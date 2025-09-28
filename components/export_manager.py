@@ -1,3 +1,23 @@
+# Copyright (c) 2025 Martinolli
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+Manages export functionality for charts, dashboards, and data.
+Hardened HTML export with:
+  - Per-figure try/except
+  - Fallback JSON + Plotly.newPlot embedding
+  - Detailed error notes
+  - Optional debug section
+"""
+# Required imports
 import streamlit as st
 import pandas as pd
 import plotly.io as pio
@@ -8,12 +28,19 @@ import io
 import zipfile
 import re
 import traceback
-
+# Local imports
 from .chart_manager import ChartManager
 from .config_models import migrate_chart_dict, ChartConfig
 
 
 def _sanitize_html_id(raw: str) -> str:
+    """
+    Sanitize a string to be safe for HTML element IDs.
+    Replace unsafe characters with underscores.
+        Args:
+        raw: Input string
+    Returns: Sanitized string
+    """
     return re.sub(r'[^A-Za-z0-9_\-]', '_', str(raw))
 
 
@@ -326,6 +353,12 @@ li pre {{
     def _figure_to_html(self, fig, safe_id: str, include_plotlyjs: bool) -> Any:
         """
         Try standard pio.to_html route. Return HTML string or None if failure.
+        Args:
+            fig: Plotly figure object
+            safe_id: Sanitized unique ID for HTML element
+            include_plotlyjs: If True, include Plotly.js in output
+        Returns:
+            HTML div string or None on failure
         """
         try:
             return pio.to_html(
@@ -340,7 +373,12 @@ li pre {{
     def _figure_fallback_json(self, fig, safe_id: str, first: bool = False):
         """
         Fallback method: embed figure JSON + Plotly.newPlot.
-        Returns (html_div, js_code).
+        Args:
+            fig: Plotly figure object
+            safe_id: Sanitized unique ID for HTML element
+            first: If True, include Plotly.js loader
+        Returns:
+            (html_div, js_code).
         """
         fig_json = fig.to_plotly_json()
         # Minimal container
@@ -445,6 +483,12 @@ li pre {{
         return fig_copy
 
     def _escape_html(self, text: str) -> str:
+        """
+        Escape HTML special characters in a string.
+        Args:
+            text: Input string to escape
+        Returns: Escaped string
+        """
         return (text.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;"))
