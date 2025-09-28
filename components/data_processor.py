@@ -1,3 +1,20 @@
+# Copyright (c) 2025 Martinolli
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+Data processing module for flight test data application.
+Handles data loading, processing, validation, and provides utilities for analysis.
+
+"""
+# Standard Libraries
 import os
 import pandas as pd
 import numpy as np
@@ -5,7 +22,7 @@ import streamlit as st
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import io
-
+# Local Modules
 from .large_dataset_handler import LargeDatasetHandler
 
 class DataProcessor:
@@ -66,8 +83,13 @@ class DataProcessor:
             st.error(f"Error loading data: {e}")
             return pd.DataFrame()
     
-    def load_data(self, file):
-        """Enhanced data loading with large dataset support."""
+    def load_data(self, file: Any) -> pd.DataFrame:
+        """Enhanced data loading with large dataset support.
+        Args:
+            file: Uploaded file object from Streamlit
+        Returns:
+            Processed DataFrame or empty DataFrame if loading fails     
+        """
         try:
             # Save uploaded file temporarily
             temp_path = f"/tmp/{file.name}"
@@ -112,8 +134,13 @@ class DataProcessor:
             st.error(f"Error loading data: {e}")
             return pd.DataFrame()
 
-    def _display_dataset_summary(self, summary):
-        """Display dataset summary in the UI."""
+    def _display_dataset_summary(self, summary: Dict[str, Any]) -> None:
+        """Display dataset summary in the UI.
+        Args:
+            summary: Summary dictionary from create_data_summary
+        Returns:
+            None        
+        """
         st.subheader("📊 Dataset Summary")
         
         basic_info = summary['basic_info']
@@ -147,6 +174,11 @@ class DataProcessor:
     def _create_column_names(self, header1: List[str], header2: List[str]) -> List[str]:
         """
         Create proper column names from header rows.
+        Args:
+            header1: First header row (parameter names/descriptions)
+            header2: Second header row (units)
+        Returns:
+            List of cleaned column names
         """
         columns = []
         for i, (param, unit) in enumerate(zip(header1, header2)):
@@ -171,6 +203,11 @@ class DataProcessor:
     def _parse_data_rows(self, data_lines: List[str], expected_columns: int) -> List[List[str]]:
         """
         Parse data rows and filter valid ones.
+        Args:
+            data_lines: List of data row lines
+            expected_columns: Expected number of columns in the data
+        Returns:
+            List of valid data rows
         """
         data_rows = []
         for line_num, line in enumerate(data_lines, start=3):
@@ -195,6 +232,10 @@ class DataProcessor:
     def _process_timestamps(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Process timestamp column and handle different formats.
+        Args:
+            df: DataFrame with timestamp column
+        Returns:
+            DataFrame with processed timestamps or empty DataFrame if errors occur
         """
         if 'Timestamp' not in df.columns:
             st.error("Timestamp column not found")
@@ -241,6 +282,10 @@ class DataProcessor:
     def _convert_numeric_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Convert numeric columns and handle conversion errors.
+        Args:
+            df: DataFrame to process
+        Returns:
+            DataFrame with numeric columns converted
         """
         # Collect converted columns to assign in a single operation (avoids fragmentation)
         converted_numeric: Dict[str, pd.Series] = {}
@@ -273,6 +318,10 @@ class DataProcessor:
     def _calculate_derived_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Calculate derived columns like elapsed time.
+        Args:
+            df: DataFrame to process
+        Returns:
+            DataFrame with derived columns added
         """
         if 'Timestamp' in df.columns and df['Timestamp'].notna().any():
             # Calculate elapsed time
@@ -296,6 +345,10 @@ class DataProcessor:
     def _validate_data_quality(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Validate data quality and provide feedback.
+        Args:
+            df: DataFrame to validate
+        Returns:
+            Validated DataFrame with potential issues reported
         """
         # Check for completely empty columns
         empty_cols = df.columns[df.isnull().all()].tolist()
@@ -324,6 +377,10 @@ class DataProcessor:
     def get_parameter_categories(self, df: pd.DataFrame) -> Dict[str, List[str]]:
         """
         Categorize parameters based on common flight test naming conventions.
+        Args:
+            df: DataFrame containing the data
+        Returns:
+            Dictionary mapping categories to parameter lists
         """
         categories = {
             'Control Surfaces': [],
@@ -415,6 +472,11 @@ class DataProcessor:
     def calculate_statistics(self, df: pd.DataFrame, parameters: List[str]) -> Dict[str, Dict[str, float]]:
         """
         Calculate comprehensive statistics for selected parameters.
+        Args:
+            df: DataFrame containing the data
+            parameters: List of parameter names to analyze
+        Returns:
+            Dictionary mapping parameter names to their statistics
         """
         stats = {}
         
