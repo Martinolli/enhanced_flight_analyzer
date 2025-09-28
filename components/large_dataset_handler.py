@@ -1,6 +1,18 @@
-# File: components/large_dataset_handler.py (NEW FILE)
+# Copyright (c) 2025 Martinolli
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Enhanced data processing for large flight test datasets.
+This module provides memory-efficient loading, processing, and summarization
+of large datasets, integrating with Streamlit for user interaction.
 """
 
 import pandas as pd
@@ -85,7 +97,12 @@ class LargeDatasetHandler:
             return self._load_chunked_full(file_path, progress_callback)
     
     def _load_standard(self, file_path: str) -> pd.DataFrame:
-        """Load file using standard method."""
+        """Load file using standard method.
+
+        Args:
+            file_path: Path to the data file
+        Returns:
+            DataFrame with loaded data"""
         # Read headers
         with open(file_path, 'r') as f:
             header1 = f.readline().strip().split(',')
@@ -99,7 +116,13 @@ class LargeDatasetHandler:
         return self._process_dataframe(df)
     
     def _load_chunked_full(self, file_path: str, progress_callback=None) -> pd.DataFrame:
-        """Load large file in chunks and combine."""
+        """Load large file in chunks and combine.
+        Args:
+            file_path: Path to the data file
+            progress_callback: Progress callback function
+        Returns:
+            Combined DataFrame
+        """
         # Read headers
         with open(file_path, 'r') as f:
             header1 = f.readline().strip().split(',')
@@ -180,7 +203,13 @@ class LargeDatasetHandler:
         return processed_df
     
     def _create_column_names(self, header1: List[str], header2: List[str]) -> List[str]:
-        """Create proper column names from header rows."""
+        """Create proper column names from header rows.
+        Args:
+            header1: First header row
+            header2: Second header row
+        Returns:
+            List of cleaned column names        
+        """
         columns = []
         for i, (param, unit) in enumerate(zip(header1, header2)):
             if i == 0:  # First column is timestamp
@@ -202,7 +231,14 @@ class LargeDatasetHandler:
         return columns
     
     def _process_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Process DataFrame with timestamp conversion and numeric conversion."""
+        """Process DataFrame with timestamp conversion and numeric conversion.
+        Args:
+            df: DataFrame to process
+        Returns:
+            Processed DataFrame with timestamp converted to datetime and numeric columns
+            converted to numeric, with elapsed time in seconds calculated.
+        
+        """
         # Convert timestamp
         if 'Timestamp' in df.columns:
             try:
@@ -346,6 +382,10 @@ class LargeDatasetHandler:
 def create_large_dataset_ui():
     """
     Create Streamlit UI components for large dataset handling.
+    Args:
+        None (uses Streamlit session state)
+    Returns:
+        None (modifies Streamlit session state)
     """
     st.subheader("📊 Large Dataset Handling")
     
