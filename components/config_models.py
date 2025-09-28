@@ -1,3 +1,20 @@
+# Copyright (c) 2025 Martinolli
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""
+Configuration models for the application.
+
+This module defines data classes for various configuration models used in the application,
+including chart configurations with enhanced plotting functionalities."""
+
+# Standard Library Imports
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Dict, Any
 
@@ -25,6 +42,13 @@ class ChartConfig:
     # X-axis UX
     show_x_range_slider: bool = True    # Enable Plotly rangeslider on the x-axis
 
+    # >>> NEW: X-range / timeframe filter <<<
+    enable_x_filter: bool = False
+    x_filter_min_value: Optional[float] = None    # for numeric X
+    x_filter_max_value: Optional[float] = None    # for numeric X
+    ts_filter_start: Optional[str] = None         # ISO datetime string for Timestamp X
+    ts_filter_end: Optional[str] = None           # ISO datetime string for Timestamp X
+
     # Unit detection / dual axis
     auto_detect_units: bool = True
     force_unit_detection: bool = False
@@ -51,6 +75,14 @@ class ChartConfig:
     band_rms: List[List[float]] = field(default_factory=list)  # [[lo, hi], ...]
 
     def as_dict(self) -> Dict[str, Any]:
+        """
+        Convert ChartConfig to a dictionary for storage or transmission.
+        Note: Includes schema version for future migrations.
+        Arguments:
+            None
+        Returns:
+            Dict[str, Any]: Dictionary representation of the ChartConfig.
+        """
         return {
             "id": self.id,
             "title": self.title,
@@ -69,6 +101,11 @@ class ChartConfig:
             "notes": self.notes,
             "sort_x": self.sort_x,
             "show_x_range_slider": self.show_x_range_slider,
+            "enable_x_filter": self.enable_x_filter,
+            "x_filter_min_value": self.x_filter_min_value,
+            "x_filter_max_value": self.x_filter_max_value,
+            "ts_filter_start": self.ts_filter_start,
+            "ts_filter_end": self.ts_filter_end,
             "auto_detect_units": self.auto_detect_units,
             "force_unit_detection": self.force_unit_detection,
             "manual_y_unit": self.manual_y_unit,
@@ -94,6 +131,10 @@ class ChartConfig:
 def migrate_chart_dict(d: Dict[str, Any]) -> ChartConfig:
     """
      Extend existing migration logic to fill defaults for new frequency fields.
+     Arguments:
+         d (Dict[str, Any]): The chart configuration dictionary to migrate.
+    Returns:
+            ChartConfig: The migrated ChartConfig instance.
     """
     # Existing migrations...
     if "override_sample_rate" not in d:
@@ -108,9 +149,18 @@ def migrate_chart_dict(d: Dict[str, Any]) -> ChartConfig:
         d["highpass_cutoff"] = None
     if "band_rms" not in d:
         d["band_rms"] = []
-    # New optional UI flags
     if "show_x_range_slider" not in d:
         d["show_x_range_slider"] = False
+    if "enable_x_filter" not in d:
+        d["enable_x_filter"] = False
+    if "x_filter_min_value" not in d:
+        d["x_filter_min_value"] = None
+    if "x_filter_max_value" not in d:
+        d["x_filter_max_value"] = None
+    if "ts_filter_start" not in d:
+        d["ts_filter_start"] = None
+    if "ts_filter_end" not in d:
+        d["ts_filter_end"] = None
 
     return ChartConfig(
         id=d["id"],
@@ -124,7 +174,12 @@ def migrate_chart_dict(d: Dict[str, Any]) -> ChartConfig:
         color_scheme=d.get("color_scheme", "viridis"),
         freq_type=d.get("freq_type", "fft"),
         sort_x=d.get("sort_x", False),
-    show_x_range_slider=d.get("show_x_range_slider", False),
+        show_x_range_slider=d.get("show_x_range_slider", False),
+        enable_x_filter=d.get("enable_x_filter", False),
+        x_filter_min_value=d.get("x_filter_min_value"),
+        x_filter_max_value=d.get("x_filter_max_value"),
+        ts_filter_start=d.get("ts_filter_start"),
+        ts_filter_end=d.get("ts_filter_end"),
         auto_detect_units=d.get("auto_detect_units", True),
         force_unit_detection=d.get("force_unit_detection", False),
         synchronize_scales=d.get("synchronize_scales", False),
