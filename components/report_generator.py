@@ -125,7 +125,13 @@ class FlightReportGenerator:
         return analysis_results
     
     def _assess_violation_severity(self, violation_count: int, total_points: int) -> str:
-        """Assess the severity of parameter violations."""
+        """Assess the severity of parameter violations.
+        Args:
+            violation_count: Number of violations
+            total_points: Total number of data points
+        Returns:
+            Severity level as a string
+        """
         if violation_count == 0:
             return "COMPLIANT"
         
@@ -141,7 +147,13 @@ class FlightReportGenerator:
             return "CRITICAL"
     
     def _compute_basic_statistics(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Compute basic flight statistics."""
+        """Compute basic flight statistics.
+        Args:
+            df: Flight data DataFrame
+        Returns:
+            Dictionary containing basic statistics
+        
+        """
         stats = {}
         
         # Flight duration
@@ -168,7 +180,13 @@ class FlightReportGenerator:
         return stats
     
     def _compute_exceedance_summary(self, limit_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Compute summary of limit exceedances."""
+        """Compute summary of limit exceedances.
+        Args:
+            limit_analysis: Dictionary containing limit analysis results
+        Returns:
+            Summary dictionary
+        
+        """
         summary = {
             'total_parameters_analyzed': len(limit_analysis),
             'compliant_parameters': 0,
@@ -202,7 +220,14 @@ class FlightReportGenerator:
         return summary
     
     def _create_limit_violations_chart(self, limit_analysis: Dict[str, Any]) -> str:
-        """Create a chart showing limit violations by parameter."""
+        """Create a chart showing limit violations by parameter.
+        Args:
+            limit_analysis: Dictionary containing limit analysis results
+        Returns:
+            HTML div string containing the chart
+        
+        
+        """
         if not limit_analysis:
             return ""
         
@@ -258,7 +283,14 @@ class FlightReportGenerator:
     
     def _create_parameter_distribution_chart(self, df: pd.DataFrame, 
                                            limit_analysis: Dict[str, Any]) -> str:
-        """Create distribution charts for parameters with violations."""
+        """Create distribution charts for parameters with violations.
+        Args:
+            df: Flight data DataFrame
+            limit_analysis: Dictionary containing limit analysis results
+        Returns:
+            HTML div string containing the chart
+
+        """
         if not limit_analysis:
             return ""
         
@@ -329,7 +361,14 @@ class FlightReportGenerator:
     
     def _create_timeline_violations_chart(self, df: pd.DataFrame, 
                                         limit_analysis: Dict[str, Any]) -> str:
-        """Create a timeline chart showing when violations occurred."""
+        """Create a timeline chart showing when violations occurred.
+        Args:
+            df: Flight data DataFrame
+            limit_analysis: Dictionary containing limit analysis results
+        Returns:
+            HTML div string containing the chart     
+        
+        """
         if 'Elapsed Time (s)' not in df.columns:
             return "<p><strong>Timeline chart requires 'Elapsed Time (s)' column.</strong></p>"
         
@@ -586,7 +625,12 @@ class FlightReportGenerator:
         return html_content
     
     def _build_flight_info_section(self, flight_info: Dict[str, Any]) -> str:
-        """Build flight information section."""
+        """Build flight information section.
+        Args:
+            flight_info: Dictionary containing flight information
+        Returns:
+            HTML string for flight information section
+        """
         return f"""
         <div class="section">
             <h2>📋 Flight Information</h2>
@@ -601,7 +645,14 @@ class FlightReportGenerator:
     
     def _build_executive_summary(self, basic_stats: Dict[str, Any], 
                                 exceedance_summary: Dict[str, Any]) -> str:
-        """Build executive summary section."""
+        """Build executive summary section.
+        Args:
+            basic_stats: Dictionary containing basic statistics
+            exceedance_summary: Dictionary containing exceedance summary
+        Returns:
+            HTML string for executive summary section
+        
+        """
         
         # Determine overall status
         if exceedance_summary['severity_breakdown']['CRITICAL'] > 0:
@@ -664,7 +715,13 @@ class FlightReportGenerator:
     
     def _build_limit_analysis_section(self, limit_analysis: Dict[str, Any], 
                                     exceedance_summary: Dict[str, Any]) -> str:
-        """Build parameter limit analysis section."""
+        """Build parameter limit analysis section.
+        Args:
+            limit_analysis: Dictionary containing limit analysis results
+            exceedance_summary: Dictionary containing exceedance summary
+        Returns:
+            HTML string for limit analysis section
+        """
         
         # Severity breakdown
         severity_cards = ""
@@ -737,7 +794,12 @@ class FlightReportGenerator:
 """
     
     def _build_charts_section(self, charts: Dict[str, str]) -> str:
-        """Build charts section."""
+        """Build charts section.
+        Args:
+            charts: Dictionary containing HTML divs of charts
+        Returns:
+            HTML string for charts section
+        """
         return f"""
         <div class="section">
             <h2>📈 Visualizations</h2>
@@ -761,7 +823,13 @@ class FlightReportGenerator:
     
     def _build_detailed_statistics_section(self, basic_stats: Dict[str, Any], 
                                          df: pd.DataFrame) -> str:
-        """Build detailed statistics section."""
+        """Build detailed statistics section.
+        Args:
+            basic_stats: Dictionary containing basic statistics
+            df: Flight data DataFrame
+        Returns:
+            HTML string for detailed statistics section
+        """
         
         # Data quality metrics
         missing_info = basic_stats['missing_data']
@@ -782,7 +850,12 @@ class FlightReportGenerator:
 """
     
     def _build_recommendations_section(self, exceedance_summary: Dict[str, Any]) -> str:
-        """Build recommendations section."""
+        """Build recommendations section.
+        Args:
+            exceedance_summary: Dictionary containing exceedance summary
+        Returns:
+            HTML string for recommendations section        
+        """
         
         recommendations = []
         
