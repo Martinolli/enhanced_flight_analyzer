@@ -1,3 +1,20 @@
+# Copyright (c) 2025 Martinolli
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""
+ChartManager: A class to manage and create various types of charts using Plotly,
+including line, scatter, bar, area, and frequency domain plots with advanced
+features like zooming, panning, and dynamic updates.
+It supports dual y-axes, unit detection and conversion, and data filtering.
+"""
+# Import necessary libraries
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -7,6 +24,7 @@ from typing import Dict, Any, Optional, Union, List
 from scipy.signal import welch, get_window, detrend as scipy_detrend
 from scipy.fft import fft, fftfreq
 
+# Local imports (assumed to be in the same package)
 from .config_models import ChartConfig, migrate_chart_dict
 from .unit_utils import UnitDetector, detect_unit_mismatch
 from .unit_conversion import PhysicalUnitConverter
@@ -30,9 +48,79 @@ class ChartManager:
         self.unit_converter = PhysicalUnitConverter()
 
     def _ensure_config(self, config: Union[ChartConfig, Dict[str, Any]]) -> ChartConfig:
+        """
+        Ensure the configuration is a ChartConfig instance.
+        If a dictionary is provided, migrate it to ChartConfig.
+
+        Args:
+            config (Union[ChartConfig, Dict[str, Any]]): The chart configuration.
+        Returns:
+            ChartConfig: The validated chart configuration.    
+        """
+        # Convert dictionary to ChartConfig if necessary
         return config if isinstance(config, ChartConfig) else migrate_chart_dict(config)
 
+    def _apply_x_filter(self, df: pd.DataFrame, cfg: ChartConfig) -> pd.DataFrame:
+        """
+        Apply x-axis filtering based on the chart configuration.
+        If x-axis filtering is enabled, filter the DataFrame based on the
+        specified time range.
+        If x-axis filtering is disabled, return the original DataFrame.
+        Args:
+            df (pd.DataFrame): The input DataFrame.
+            cfg (ChartConfig): The chart configuration.
+
+        Returns:
+            pd.DataFrame: The filtered DataFrame.
+        """
+        try:
+            if not getattr(cfg, "enable_x_filter", False):
+                return df
+            if cfg.x_param not in df.columns:
+                return df
+
+            # Timestamp-based filtering
+            if cfg.x_param == "Timestamp":
+                ts = pd.to_datetime(df[cfg.x_param], errors="coerce")
+                start_s = getattr(cfg, "ts_filter_start", None)
+                end_s = getattr(cfg, "ts_filter_end", None)
+                if start_s and end_s:
+                    start_dt = pd.to_datetime(start_s, errors="coerce")
+                    end_dt = pd.to_datetime(end_s, errors="coerce")
+                    if pd.notna(start_dt) and pd.notna(end_dt):
+                        mask = (ts >= start_dt) & (ts <= end_dt)
+                        return df.loc[mask]
+                return df
+
+            # Numeric-based filtering (Elapsed Time (s) or other numeric X)
+            x_series = pd.to_numeric(df[cfg.x_param], errors="coerce")
+            xmin = getattr(cfg, "x_filter_min_value", None)
+            xmax = getattr(cfg, "x_filter_max_value", None)
+            mask = pd.Series(True, index=df.index)
+            if xmin is not None:
+                mask &= x_series >= xmin
+            if xmax is not None:
+                mask &= x_series <= xmax
+            return df.loc[mask]
+        except Exception:
+            # Fail-safe: return original df if anything goes wrong
+            return df
+        
     def _analyze_parameter_units(self, cfg: ChartConfig) -> Dict[str, Any]:
+        """
+        Analyze the units of parameters specified in the chart configuration.
+        Determine whether dual y-axes are needed, the common unit for primary
+        and secondary parameters, and whether unit mismatch is detected.
+        Args:
+            cfg (ChartConfig): The chart configuration.
+            Returns:
+        Returns:
+            Dict[str, Any]: The analysis results.
+            'needs_dual_axis': bool,
+                'primary_params': List[str],
+                'primary_unit': str,
+                'unit_mismatch_detected': bool
+        """
         all_params = cfg.y_params + cfg.secondary_y_params
         if not cfg.auto_detect_units:
             return {
@@ -92,6 +180,14 @@ class ChartManager:
         }
 
     def _get_common_unit(self, parameters: List[str]) -> Optional[str]:
+        """
+        Determine the most common unit among a list of parameters.
+        Args:
+        parameters (List[str]): The list of parameters.
+        Returns:
+        str: The most common unit.
+        """
+
         if not parameters:
             return None
         units = []
@@ -105,6 +201,15 @@ class ChartManager:
         return Counter(units).most_common(1)[0][0]
 
     def _format_axis_label(self, base_label: str, unit: Optional[str], style: str = "parentheses") -> str:
+        """
+        Format the axis label with the unit according to the specified style.
+        Args:
+            base_label (str): The base label without unit.
+            unit (str): The unit to be appended.
+            style (str): The style to format the unit ("parentheses", "bracket", "suffix")
+        Returns:
+            str: The formatted axis label.
+        """
         if not unit:
             return base_label
         if style == "bracket":
@@ -114,6 +219,16 @@ class ChartManager:
         return f"{base_label} ({unit})"
 
     def _format_legend_name(self, param_name: str, show_units: bool, style: str = "parentheses") -> str:
+        """
+        Format the legend name with the unit according to the specified style.
+        Args:
+            param_name (str): The parameter name.
+            show_units (bool): Whether to show the unit in the legend.
+            style (str): The style to format the unit ("parentheses", "bracket", "suffix").
+        Returns:
+            str: The formatted legend name.
+        """
+
         if not show_units:
             return self.unit_detector._get_base_parameter_name(param_name)
         unit = self.unit_detector.extract_unit_from_parameter(param_name)
@@ -123,8 +238,19 @@ class ChartManager:
         return param_name
 
     def create_chart(self, df: pd.DataFrame, config: Union[ChartConfig, Dict[str, Any]]) -> Optional[go.Figure]:
+        """
+        Create a chart based on the provided configuration.
+        Args:
+            df (pd.DataFrame): The input DataFrame.
+            config (Union[ChartConfig, Dict[str, Any]]): The chart configuration.
+        Returns:
+            go.Figure: The created chart.
+            None: If the chart creation fails.
+        """
+
         try:
             cfg = self._ensure_config(config)
+            df = self._apply_x_filter(df, cfg)
             if cfg.chart_type == 'frequency':
                 return self._create_frequency_plot(df, cfg)
             if not cfg.y_params:
@@ -145,6 +271,19 @@ class ChartManager:
     def _create_dual_axis_chart(self, df: pd.DataFrame, cfg: ChartConfig,
                                 unit_analysis: Dict[str, Any], primary_params: List[str],
                                 secondary_params: List[str]) -> go.Figure:
+
+        """
+        Create a dual-axis chart.
+        Args:
+            df (pd.DataFrame): The input DataFrame.
+            cfg (ChartConfig): The chart configuration.
+            unit_analysis (Dict[str, Any]): The unit analysis results.
+            primary_params (List[str]): The primary parameters.
+            secondary_params (List[str]): The secondary parameters.
+        Returns:
+            go.Figure: The created dual-axis chart.
+        """
+
         df_plot = self._prepare_dataframe(df, cfg)
         chosen_type = self._determine_chart_type(df_plot, cfg)
         fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -188,6 +327,15 @@ class ChartManager:
         return fig
 
     def _prepare_dataframe(self, df: pd.DataFrame, cfg: ChartConfig) -> pd.DataFrame:
+        """
+        Prepare the DataFrame for plotting. Handle datetime conversion
+        and sorting if necessary.
+        Args:
+            df (pd.DataFrame): The input DataFrame.
+            cfg (ChartConfig): The chart configuration.
+        Returns:
+            pd.DataFrame: The prepared DataFrame.
+        """
         df_plot = df.copy()
         if cfg.x_param == "Timestamp":
             try:
@@ -204,6 +352,13 @@ class ChartManager:
         return df_plot
 
     def _determine_chart_type(self, df_plot: pd.DataFrame, cfg: ChartConfig) -> str:
+        """
+        Determine the appropriate chart type based on the configuration.
+        Args:
+            df_plot (pd.DataFrame): The DataFrame prepared for plotting.
+        Returns:
+            str: The determined chart type.
+        """
         chosen_type = cfg.chart_type
         non_time = cfg.x_param not in ("Elapsed Time (s)", "Timestamp")
         if chosen_type == "line" and non_time:
@@ -213,6 +368,15 @@ class ChartManager:
         return chosen_type
 
     def _create_trace(self, chart_type: str, x_vals, y_vals, name: str, color: str) -> go.Scatter:
+        """
+        Create a Plotly trace based on the chart type.
+        Args:
+            chart_type (str): The type of chart ("line", "scatter", "bar", "area").
+            x_vals: The x values.
+            y_vals: The y values.
+            name: The name of the trace.
+            color: The color of the trace.
+        """
         if chart_type == "line":
             return go.Scatter(x=x_vals, y=y_vals, mode="lines", name=name, line=dict(color=color))
         elif chart_type == "scatter":
@@ -227,6 +391,16 @@ class ChartManager:
 
     def _synchronize_y_axes(self, fig, df_plot: pd.DataFrame, primary_params: List[str],
                             secondary_params: List[str]):
+        """
+        Synchronize the y-axis ranges for dual-axis charts.
+        Args:
+            fig: The Plotly figure.
+            df_plot (pd.DataFrame): The DataFrame prepared for plotting.
+            primary_params (List[str]): The primary parameters.
+            secondary_params (List[str]): The secondary parameters.
+        Returns:
+            None
+        """
         all_values = []
         for param in primary_params + secondary_params:
             if param in df_plot.columns:
@@ -241,15 +415,24 @@ class ChartManager:
             fig.update_yaxes(range=[rmin, rmax], secondary_y=False)
             fig.update_yaxes(range=[rmin, rmax], secondary_y=True)
 
-    def _apply_timestamp_formatting(self, fig, cfg: ChartConfig, df_plot: pd.DataFrame):
+    def _apply_timestamp_formatting(self, fig: go.Figure, cfg: ChartConfig, df_plot: pd.DataFrame) -> None:
+        """
+        Apply timestamp formatting to the x-axis if applicable.
+        Args:
+            fig (go.Figure): The Plotly figure.
+            cfg (ChartConfig): The chart configuration.
+            df_plot (pd.DataFrame): The DataFrame prepared for plotting.
+        Returns:
+        None
+        """
         # Configure x-axis formatting and optional interactions (range slider / selector)
         show_slider = bool(getattr(cfg, "show_x_range_slider", False))
         is_timestamp = (cfg.x_param == "Timestamp")
         
         # Add gridlines to all charts
         fig.update_layout(
-            xaxis=dict(showgrid=True, gridwidth=1, gridcolor='lightgray'),
-            yaxis=dict(showgrid=True, gridwidth=1, gridcolor='lightgray')
+            xaxis=dict(showgrid=True, gridwidth=.5, gridcolor='black'),
+            yaxis=dict(showgrid=True, gridwidth=.5, gridcolor='black')
         )
         
         # If we have a Timestamp column, prefer date formatting when dtype is datetime
@@ -261,8 +444,8 @@ class ChartManager:
                     tickformat="%H:%M:%S",
                     rangeslider=dict(visible=show_slider),
                     showgrid=True,
-                    gridwidth=1,
-                    gridcolor='lightgray'
+                    gridwidth=.5,
+                    gridcolor='black'
                 )
             else:
                 fig.update_xaxes(
@@ -270,8 +453,8 @@ class ChartManager:
                     tickmode="auto",
                     rangeslider=dict(visible=show_slider),
                     showgrid=True,
-                    gridwidth=1,
-                    gridcolor='lightgray'
+                    gridwidth=.5,
+                    gridcolor='black'
                 )
         else:
             # Non-Timestamp x-axis (e.g., Elapsed Time (s) or other numeric)
@@ -280,12 +463,23 @@ class ChartManager:
                 tickmode="auto",
                 rangeslider=dict(visible=show_slider),
                 showgrid=True,
-                gridwidth=1,
-                gridcolor='lightgray'
+                gridwidth=.5,
+                gridcolor='black'
             )
 
     def _create_single_axis_chart(self, df: pd.DataFrame, cfg: ChartConfig,
                                   unit_analysis: Dict[str, Any], primary_params: List[str]) -> go.Figure:
+        
+        """
+        Create a single-axis chart.
+        Args:
+            df (pd.DataFrame): The DataFrame containing the data.
+            cfg (ChartConfig): The chart configuration.
+            unit_analysis (Dict[str, Any]): The unit analysis results.
+            primary_params (List[str]): The primary parameters to plot.
+        Returns:
+            go.Figure: The created Plotly figure.
+        """
         df_plot = self._prepare_dataframe(df, cfg)
         chosen_type = self._determine_chart_type(df_plot, cfg)
         fig = go.Figure()
@@ -311,6 +505,14 @@ class ChartManager:
         return fig
 
     def _create_frequency_plot(self, df: pd.DataFrame, cfg: ChartConfig) -> Optional[go.Figure]:
+        """
+        Create a frequency plot.
+        Args:
+            df (pd.DataFrame): The DataFrame containing the data.
+            cfg (ChartConfig): The chart configuration.
+        Returns:
+            Optional[go.Figure]: The created Plotly figure or None if not applicable.
+        """
         try:
             if cfg.chart_type == "frequency":
                 fig = go.Figure()
