@@ -1,3 +1,19 @@
+# Copyright (c) 2025 Martinolli
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+Utility functions for vibration analysis.
+"""
+
+# Required imports
 import numpy as np
 from dataclasses import dataclass
 from typing import Iterable, List, Dict, Tuple, Optional
@@ -17,6 +33,16 @@ class BandRMSResult:
 def apply_highpass(y: np.ndarray, fs: float, cutoff: Optional[float]) -> np.ndarray:
     """
     Apply a 4th-order Butterworth high-pass if cutoff is valid.
+
+    Parameters
+    ----------
+    y : input signal
+    fs : sampling frequency (Hz)
+    cutoff : cutoff frequency (Hz); if None or invalid, no filtering is applied
+    Returns
+    -------
+    filtered signal
+
     """
     if cutoff is None or cutoff <= 0 or cutoff >= fs / 2:
         return y
@@ -38,6 +64,10 @@ def compute_band_rms(f: np.ndarray,
     psd : power spectral density values (unit^2/Hz)
     bands : iterable of (low, high)
     unit_scale : multiply RMS by this (e.g. convert g->m/s^2)
+
+    Returns
+    -------
+    List[BandRMSResult]
     """
     results = []
     for (lo, hi) in bands:
@@ -65,6 +95,17 @@ def detect_psd_peaks(f: np.ndarray,
     """
     Basic peak detection for PSD curve.
     Returns list of dict with frequency & amplitude.
+
+    Parameters
+    ----------
+    f : frequency bins (Hz)
+    psd : power spectral density values (unit^2/Hz)
+    prominence : required prominence of peaks
+    max_peaks : maximum number of peaks to return
+
+    Returns
+    -------
+    List[Dict]
     """
     if len(f) < 3:
         return []
