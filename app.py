@@ -17,7 +17,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 import plotly.graph_objects as go
 import plotly.express as px
@@ -571,6 +571,73 @@ with st.sidebar:
                     key=f"x_{chart_id}"
                 )
 
+                # >>> NEW: Timeframe / X-range filter UI
+                st.markdown("**Timeframe / X-range Filter**")
+                enable_x_filter = cfg_obj.enable_x_filter
+                ts_filter_start = cfg_obj.ts_filter_start
+                ts_filter_end = cfg_obj.ts_filter_end
+                x_filter_min_value = cfg_obj.x_filter_min_value
+                x_filter_max_value = cfg_obj.x_filter_max_value
+
+                # Compute data-driven limits
+                x_series = df[x_param]
+                if x_param == "Timestamp":
+                    x_dt = pd.to_datetime(x_series, errors="coerce")
+                    if x_dt.notna().any():
+                        dt_min = x_dt.min()
+                        dt_max = x_dt.max()
+                        # Defaults from config or dataset bounds
+                        cfg_start_dt = pd.to_datetime(ts_filter_start, errors="coerce") if ts_filter_start else dt_min
+                        cfg_end_dt = pd.to_datetime(ts_filter_end, errors="coerce") if ts_filter_end else dt_max
+
+                        enable_x_filter = st.checkbox("Limit time range", value=enable_x_filter, key=f"xfilter_en_{chart_id}")
+                        if enable_x_filter:
+                            # Slider with datetime range
+                            start_dt, end_dt = st.slider(
+                                "Timeframe",
+                                min_value=dt_min.to_pydatetime(),
+                                max_value=dt_max.to_pydatetime(),
+                                value=(cfg_start_dt.to_pydatetime(), cfg_end_dt.to_pydatetime()),
+                                step=timedelta(minutes=1),
+                                key=f"xfilter_ts_{chart_id}"
+                            )
+                            ts_filter_start = start_dt.isoformat()
+                            ts_filter_end = end_dt.isoformat()
+                        else:
+                            ts_filter_start = None
+                            ts_filter_end = None
+                    else:
+                        enable_x_filter = False
+                        ts_filter_start, ts_filter_end = None, None
+                        st.info("Timestamp column is not parseable; timeframe filter disabled.")
+                else:
+                    # Numeric X axis (Elapsed Time (s) or other numeric)
+                    x_num = pd.to_numeric(x_series, errors="coerce")
+                    if x_num.notna().any():
+                        vmin = float(np.nanmin(x_num.values))
+                        vmax = float(np.nanmax(x_num.values))
+                        cur_min = x_filter_min_value if x_filter_min_value is not None else vmin
+                        cur_max = x_filter_max_value if x_filter_max_value is not None else vmax
+
+                        enable_x_filter = st.checkbox("Limit X range", value=enable_x_filter, key=f"xfilter_en_{chart_id}")
+                        if enable_x_filter:
+                            cur_min, cur_max = st.slider(
+                                "X range",
+                                min_value=vmin,
+                                max_value=vmax,
+                                value=(cur_min, cur_max),
+                                step=(vmax - vmin) / 100 if vmax > vmin else 1.0,
+                                key=f"xfilter_num_{chart_id}"
+                            )
+                            x_filter_min_value = float(cur_min)
+                            x_filter_max_value = float(cur_max)
+                        else:
+                            x_filter_min_value, x_filter_max_value = None, None
+                    else:
+                        enable_x_filter = False
+                        x_filter_min_value, x_filter_max_value = None, None
+                        st.info("Selected X is not numeric; X-range filter disabled.")
+
                 # Frequency-specific controls
                 if chart_type == 'frequency':
                     freq_type = st.selectbox(
@@ -758,6 +825,12 @@ with st.sidebar:
                     color_scheme=color_scheme,
                     freq_type=freq_type,
                     sort_x=sort_x,
+                    show_x_range_slider=cfg_obj.show_x_range_slider,
+                    enable_x_filter=enable_x_filter,
+                    x_filter_min_value=x_filter_min_value,
+                    x_filter_max_value=x_filter_max_value,
+                    ts_filter_start=ts_filter_start,
+                    ts_filter_end=ts_filter_end,
                     auto_detect_units=auto_detect_units,
                     force_unit_detection=force_unit_detection,
                     synchronize_scales=synchronize_scales,
@@ -895,8 +968,8 @@ if st.session_state.data is not None:
             fig_corr.update_xaxes(rangeslider_visible=True)
             # Add gridlines to correlation chart
             fig_corr.update_layout(
-                xaxis=dict(showgrid=True, gridwidth=1, gridcolor='lightgray'),
-                yaxis=dict(showgrid=True, gridwidth=1, gridcolor='lightgray')
+                xaxis=dict(showgrid=True, gridwidth=.5, gridcolor='black'),
+                yaxis=dict(showgrid=True, gridwidth=.5, gridcolor='black')
             )
             st.plotly_chart(fig_corr, use_container_width=True)
         else:
