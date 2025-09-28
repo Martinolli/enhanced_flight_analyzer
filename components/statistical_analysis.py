@@ -1,4 +1,13 @@
-# File: components/statistical_analysis.py (NEW FILE)
+# Copyright (c) 2025 Martinolli
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """
 Enhanced statistical analysis capabilities for flight test data.
 """
@@ -379,7 +388,12 @@ class FlightDataStatistics:
         return results
     
     def _interpret_component(self, top_loadings: List[Tuple[str, float]]) -> str:
-        """Generate interpretation for a PCA component."""
+        """Generate interpretation for a PCA component.
+        Args:
+            top_loadings: List of tuples (parameter name, loading value)
+        Returns:
+            Interpretation string        
+        """
         if not top_loadings:
             return "No significant loadings"
         
